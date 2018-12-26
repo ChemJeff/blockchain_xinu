@@ -65,6 +65,7 @@ struct Log {
 };
 
 LocalInfo local_info;
+Log local_log[MAX_LOG];
 
 int32 str2msg(char* buf, int32 length, Message* msgbuf) {
     //foo
