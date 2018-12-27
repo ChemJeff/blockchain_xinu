@@ -7,8 +7,6 @@
  *------------------------------------------------------------------------
  */
 
-#include <xinu.h>
-
 #define MAX_ALIVE 255
 #define MAX_LOG 1024
 
@@ -35,12 +33,12 @@
 
 #define EPS 1e-6
 
-struct list_t {
+typedef struct list_t{
     uint32 ipaddr;
     byte   mac[ETH_ADDR_LEN];
-}
+};
 
-struct LocalInfo {
+typedef struct LocalInfo{
     sid32 balance_lock;     //对余额的读写保护
     sid32 list_lock;        //对设备列表的读写保护
 
@@ -48,14 +46,16 @@ struct LocalInfo {
     int32 local_subnet_mask;
     int32 local_alive_count;
     int32 local_balance;
-    list_t local_device_list[MAX_ALIVE];
-    void init() {
-        local_alive_count = 0;
-        //foo
-    }
+    struct list_t local_device_list[MAX_ALIVE];
+
 };
 
-struct ProcInfo { //保存每个处理过程的相关信息
+void init_local(struct LocalInfo* ptrlocal) {
+    ptrlocal->local_alive_count = 0;
+    //foo
+}
+
+typedef struct ProcInfo{ //保存每个处理过程的相关信息
     pid32 procid;
     int32 ipaddr1;
     int32 ipaddr2;
@@ -63,14 +63,14 @@ struct ProcInfo { //保存每个处理过程的相关信息
     byte last_msg;  // 上一条收到的信息状态
 };
 
-struct Message {
+typedef struct Message{
     int32 ipaddr1;
     int32 ipaddr2;
     byte protocol_type;
     double amount;
 };
 
-struct Log {
+typedef struct Log{
     int32 ipaddr1;
     int32 ipaddr2;
     byte flag;          //交易标志，如是否成功
@@ -80,10 +80,68 @@ struct Log {
     double balance;     //此次交易后本机的余额
 };
 
-LocalInfo local_info;
-Log local_log[MAX_LOG];
+struct LocalInfo local_info;
+struct Log local_log[MAX_LOG];
 
-int32 str2msg(char* buf, int32 length, Message* msgbuf) {
+double atof(const char *str) { //处理写法比较标准的浮点数
+	double s = 0.0;
+	double d = 10.0;
+	int base = 0;
+	byte sign = FALSE;
+ 
+	while(*str == ' ') str++;
+ 
+	if(*str == '-') { //处理负号
+		sign = TRUE;
+		str++;
+	}
+ 
+	if(!(*str >= '0' && *str <= '9')) //如果一开始非数字则退出，返回0.0
+		return s;
+ 
+	while(*str >= '0' && *str <= '9' && *str != '.') { //计算小数点前整数部分
+		s = s*10.0 + *str - '0';
+		str++;
+	}
+ 
+	if(*str == '.') //以后为小数部分
+		str++;
+ 
+	while(*str >= '0' && *str <= '9') { //计算小数部分
+		s = s + (*str - '0')/d;
+		d *= 10.0;
+		str++;
+	}
+ 
+	if(*str == 'e' || *str == 'E') { //考虑科学计数法
+		str++;
+		if(*str == '-') {
+			str++;
+			while(*str >= '0' && *str <= '9') {
+				base = base*10 + *str - '0';
+				str++;
+			}
+			while(base > 0) {
+				s /= 10;
+				base--;
+			}
+		}
+        if(*str == '+')
+            str++;
+        while(*str >= '0'&& *str <= '9') {
+            base = base*10 + *str - '0';
+            str++;
+        }
+        while(base > 0)	{
+            s *= 10;
+            base--;
+        }
+	}
+ 
+    return (sign?-s:s);
+}
+
+int32 str2msg(char* buf, int32 length, struct Message* msgbuf) {
     //foo
     char* ptr;
     ptr = buf;
@@ -97,10 +155,11 @@ int32 str2msg(char* buf, int32 length, Message* msgbuf) {
     return OK;
 }
 
-int32 msg2log(Message* msg, Log* logbuf) {  //由接收到的消息填写日志项
+int32 msg2log(struct Message* msg, struct Log* logbuf) {  //由接收到的消息填写日志项
     //foo
     if (msg->ipaddr2 == local_info.local_ipaddr) {      //交易收到方已经主动保存了记录
-        return IGNORE;
+        // return IGNORE;
+        return -1;
     }
     logbuf->ipaddr1 = msg->ipaddr1;
     logbuf->ipaddr2 = msg->ipaddr2;
@@ -113,20 +172,20 @@ int32 msg2log(Message* msg, Log* logbuf) {  //由接收到的消息填写日志�
         logbuf->role = ROLE_OTHER;
     }
 
-    switch(role) {
-        case ROLE_SEND: logbuf->amount = -logbug->org_amount; break;
+    switch(logbuf->role) {
+        case ROLE_SEND: logbuf->amount = -logbuf->org_amount; break;
         case ROLE_OTHER: logbuf->amount = 0; break;
         default: return SYSERR;
     }
     wait(local_info.balance_lock);      //考虑在外层加锁
-    logbuf->balance = local_info.balance;
+    logbuf->balance = local_info.local_balance;
     signal(local_info.balance_lock);
 
     return OK;
 }
 
 int32 arg2log(
-    Log* logbuf, int32 ipaddr1, int32 ipaddr2, byte flag, byte role, double org_amount) {
+    struct Log* logbuf, int32 ipaddr1, int32 ipaddr2, byte flag, byte role, double org_amount) {
     //主动通过指定参数填写日志项
     logbuf->ipaddr1 = ipaddr1;
     logbuf->ipaddr2 = ipaddr2;
@@ -137,7 +196,7 @@ int32 arg2log(
     if (flag != FLAG_SUCC) {
         logbuf->amount = 0;
         wait(local_info.balance_lock);      //考虑在外层加锁
-        logbuf->balance = local_info.balance;
+        logbuf->balance = local_info.local_balance;
         signal(local_info.balance_lock);
     }
 
@@ -149,7 +208,7 @@ int32 arg2log(
         default: return SYSERR;
     }
     wait(local_info.balance_lock);      //考虑在外层加锁
-    logbuf->balance = local_info.balance;
+    logbuf->balance = local_info.local_balance;
     signal(local_info.balance_lock);
 
     return OK;
@@ -192,7 +251,7 @@ void arp_scan ()
  *------------------------------------------------------------------------
  */
 void list_device() {
-    int32 i;
+    int32 i, j;
     printf("Device list:\n");
     printf("No.     IP Address        Hardware Address   \n");
 	printf("---  ---------------     -----------------   \n");

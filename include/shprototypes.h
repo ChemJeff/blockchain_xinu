@@ -90,3 +90,6 @@ extern 	shellcmd  xsh_fromfile	(int32, char *[]);
 
 /* in file xsh_arpscan.c */
 extern  shellcmd  xsh_arpscan   (int32, char *[]);
+
+/* in file blockchain.c */
+extern  shellcmd  xsh_blockchain   (int32, char *[]);

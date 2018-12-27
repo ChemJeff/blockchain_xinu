@@ -16,23 +16,23 @@ bool8 recv_flag = FALSE;
 bool8 contract_flag = FALSE;
 
 //保存与对应处理过程相关的信息
-ProcInfo send_info;
-ProcInfo recv_info;
-ProcInfo contract_info;
+struct ProcInfo send_info;
+struct ProcInfo recv_info;
+struct ProcInfo contract_info;
 pid32 udp_procid;
 
 //不同线程的消息缓冲区
-Message send_buf;
-Message recv_buf;
-Message contract_buf;
+struct Message send_buf;
+struct Message recv_buf;
+struct Message contract_buf;
 
 //用于进行线程同步的信号量
 sid32 send_sem;
 sid32 recv_sem;
 sid32 contract_sem;
 
-extern LocalInfo local_info;
-extern Log local_log[];
+extern struct LocalInfo local_info;
+extern struct Log local_log[];
 
 int32 init_semp() {
     // foo
