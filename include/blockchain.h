@@ -1,4 +1,4 @@
-/*------------------------------------------------------------------------
+﻿/*------------------------------------------------------------------------
  * EndGame
  * Name = TangJiajun
  * StudentID = 1500011776
@@ -11,6 +11,8 @@
 #define MAX_LOG 1024
 #define MAX_MSG_LEN 50
 #define WAIT_TIME 10
+
+// test commit
 
 #define BLKCHAIN_UDP_PORT 1024
 
