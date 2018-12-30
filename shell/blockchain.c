@@ -68,13 +68,14 @@ process udp_recvp() {
             return 0;
         }
         udp_len = udp_recvaddr(udp_slot, &remoteip, &remoteport, udp_message, MAX_MSG_LEN - 1, UDP_TIMEOUT);
+        //返回的udp_len包含'\0'的长度，需要注意，不然容易出现general protection error
         if (udp_len == SYSERR || udp_len == TIMEOUT) {  //本次没有成功接收到udp包，进入下个循环接收
             continue;
         }
         printf("DEBUG: UDP message received from %d.%d.%d.%d : %d\n",
             (remoteip >> 24)&0xff, (remoteip >> 16)&0xff, (remoteip >> 8)&0xff, remoteip&0xff,
             remoteport);
-        retval = str2msg(udp_message, udp_len, &msgbuf); //将收到的字符串转换为协议消息
+        retval = str2msg(udp_message, udp_len - 1, &msgbuf); //将收到的字符串转换为协议消息
         if (retval == SYSERR) { //收到的消息错误，进入下个循环接收
             continue;
         }
