@@ -79,8 +79,8 @@ status init_local(struct LocalInfo* ptrlocal) {
     ptrlocal->log_lock = retval;
     ptrlocal->local_alive_count = 0;
     ptrlocal->local_log_count = 0;
-    ptrlocal->local_ipaddr = Netdata.ipucast;   //本机IP地址
-    ptrlocal->local_subnet_mask = Netdata.ipmask;
+    ptrlocal->local_ipaddr = NetData.ipucast;   //本机IP地址
+    ptrlocal->local_subnet_mask = NetData.ipmask;
     ptrlocal->local_balance = 100; //初始钱数为100
 
     return OK;
@@ -178,7 +178,7 @@ status str2msg(char* buf, int32 length, struct Message* msgbuf) {
     //处理标准形式的消息，即 IP1(dot)_IP2(dot)_protype_amount
     //只有成功解析才返回OK
     uint32 retval;
-    char* head, tail, ptr;
+    char *head, *tail, *ptr;
     head = buf;
     tail = head;
 

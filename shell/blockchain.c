@@ -67,11 +67,11 @@ process udp_recvp() {
         if (main_exited == TRUE && recv_info.exited == TRUE && contract_info.exited == TRUE) {
             return 0;
         }
-        udp_len = recvaddr(slot, &remoteip, &remoteport, udp_message, MAX_MSG_LEN - 1, UDP_TIMEOUT);
+        udp_len = udp_recvaddr(udp_slot, &remoteip, &remoteport, udp_message, MAX_MSG_LEN - 1, UDP_TIMEOUT);
         if (udp_len == SYSERR || udp_len == TIMEOUT) {  //本次没有成功接收到udp包，进入下个循环接收
             continue;
         }
-        printf("DEBUG: UDP message received from %d.%d.%d.%d : %d",
+        printf("DEBUG: UDP message received from %d.%d.%d.%d : %d\n",
             (remoteip >> 24)&0xff, (remoteip >> 16)&0xff, (remoteip >> 8)&0xff, remoteip&0xff,
             remoteport);
         retval = str2msg(udp_message, udp_len, &msgbuf); //将收到的字符串转换为协议消息
@@ -136,7 +136,7 @@ process contractp() {
 
         contract_flag = FALSE;
     }
-    contract_info.excited = TRUE; //退出之前需要主动设置这个标记
+    contract_info.exited = TRUE; //退出之前需要主动设置这个标记
     return 0;
 }
 
