@@ -9,6 +9,8 @@
 
 #define MAX_ALIVE 255
 #define MAX_LOG 1024
+#define MAX_MSG_LEN 50
+#define WAIT_TIME 10
 
 #define BLKCHAIN_UDP_PORT 1024
 
@@ -33,12 +35,12 @@
 
 #define EPS 1e-6
 
-typedef struct list_t{
+struct list_t{
     uint32 ipaddr;
     byte   mac[ETH_ADDR_LEN];
 };
 
-typedef struct LocalInfo{
+struct LocalInfo{
     sid32 balance_lock;     //对余额的读写保护
     sid32 list_lock;        //对设备列表的读写保护
 
@@ -55,7 +57,7 @@ void init_local(struct LocalInfo* ptrlocal) {
     //foo
 }
 
-typedef struct ProcInfo{ //保存每个处理过程的相关信息
+struct ProcInfo{ //保存每个处理过程的相关信息
     pid32 procid;
     int32 ipaddr1;
     int32 ipaddr2;
@@ -63,14 +65,14 @@ typedef struct ProcInfo{ //保存每个处理过程的相关信息
     byte last_msg;  // 上一条收到的信息状态
 };
 
-typedef struct Message{
+struct Message{
     int32 ipaddr1;
     int32 ipaddr2;
     byte protocol_type;
     double amount;
 };
 
-typedef struct Log{
+struct Log{
     int32 ipaddr1;
     int32 ipaddr2;
     byte flag;          //交易标志，如是否成功
