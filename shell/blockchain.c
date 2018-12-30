@@ -68,7 +68,7 @@ process udp_recvp() {
             return 0;
         }
         udp_len = udp_recvaddr(udp_slot, &remoteip, &remoteport, udp_message, MAX_MSG_LEN - 1, UDP_TIMEOUT);
-        //返回的udp_len包含'\0'的长度，需要注意，不然容易出现general protection error
+        //返回的udp_len包含'\0'的长度，需要注意，不然容易出现general protection violation
         if (udp_len == SYSERR || udp_len == TIMEOUT) {  //本次没有成功接收到udp包，进入下个循环接收
             continue;
         }
@@ -153,11 +153,11 @@ shellcmd xsh_blockchain() {
 
     send_info.procid = getpid();
     main_exited = FALSE;
-    recv_info.procid = create(recvp, SHELL_CMDSTK, SHELL_CMDPRIO, "BCrecv", 0);
+    recv_info.procid = create(recvp, BC_PROC_STK, BC_PROC_PRIO, "BCrecv", 0);
     recv_info.exited = FALSE;
-    contract_info.procid = create(contractp, SHELL_CMDSTK, SHELL_CMDPRIO, "BCcontract", 0);
+    contract_info.procid = create(contractp, BC_PROC_STK, BC_PROC_PRIO, "BCcontract", 0);
     contract_info.exited = FALSE;
-    udp_procid = create(udp_recvp, SHELL_CMDSTK, SHELL_CMDPRIO, "BCudp", 0);
+    udp_procid = create(udp_recvp, BC_PROC_STK, BC_PROC_PRIO, "BCudp", 0);
 
     if (recv_info.procid == SYSERR || contract_info.procid == SYSERR || udp_procid == SYSERR) {
         printf("    Failed, exit...\n");

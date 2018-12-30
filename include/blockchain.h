@@ -15,6 +15,8 @@
 // test commit
 
 #define BLKCHAIN_UDP_PORT 1024
+#define BC_PROC_STK 32768
+#define BC_PROC_PRIO 20
 
 #define PROC_SEND 1
 #define PROC_RECV 2
