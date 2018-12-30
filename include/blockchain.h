@@ -35,6 +35,10 @@
 #define MSG_DEAL_SUCC 5
 #define MSG_DEAL_BDCAST 6
 
+#define RECV_TIMEOUT 1000   /* in milliseconds */
+
+#define IGNORE 0xffff
+
 #define EPS 1e-6
 
 struct list_t{
@@ -45,49 +49,73 @@ struct list_t{
 struct LocalInfo{
     sid32 balance_lock;     //对余额的读写保护
     sid32 list_lock;        //对设备列表的读写保护
+    sid32 log_lock;         //对log的互斥写保护
 
-    int32 local_ipaddr;
-    int32 local_subnet_mask;
+    uint32 local_ipaddr;
+    uint32 local_subnet_mask;
     int32 local_alive_count;
     int32 local_balance;
+    int32 local_log_count;
     struct list_t local_device_list[MAX_ALIVE];
 
 };
 
-void init_local(struct LocalInfo* ptrlocal) {
+status init_local(struct LocalInfo* ptrlocal) {
+    sid32 retval;
+
+    retval = semcreate(1);
+    if (retval == SYSERR)   //分配信号量失败
+        return SYSERR;
+    ptrlocal->balance_lock = retval;
+    retval = semcreate(1);
+    if (retval == SYSERR)   //分配信号量失败
+        return SYSERR;
+    ptrlocal->list_lock = retval;
+    retval = semcreate(1);
+    if (retval == SYSERR)   //分配信号量失败
+        return SYSERR;
+
+    ptrlocal->log_lock = retval;
     ptrlocal->local_alive_count = 0;
-    //foo
+    ptrlocal->local_log_count = 0;
+    ptrlocal->local_ipaddr = Netdata.ipucast;   //本机IP地址
+    ptrlocal->local_subnet_mask = Netdata.ipmask;
+    ptrlocal->local_balance = 100; //初始钱数为100
+
+    return OK;
 }
 
 struct ProcInfo{ //保存每个处理过程的相关信息
     pid32 procid;
-    int32 ipaddr1;
-    int32 ipaddr2;
-    double amount; 
-    byte last_msg;  // 上一条收到的信息状态
+    uint32 ipaddr1;
+    uint32 ipaddr2;
+    int32 amount; 
+    int32 last_protocol;  // 上一条收到的信息的协议类型
+    byte exited;          // 本线程是否已经退出(udp线程应该最后退出)
 };
 
 struct Message{
-    int32 ipaddr1;
-    int32 ipaddr2;
-    byte protocol_type;
-    double amount;
+    uint32 ipaddr1;
+    uint32 ipaddr2;
+    int32 protocol_type;
+    int32 amount;
 };
 
 struct Log{
-    int32 ipaddr1;
-    int32 ipaddr2;
+    uint32 ipaddr1;
+    uint32 ipaddr2;
     byte flag;          //交易标志，如是否成功
     byte role;          //本机在本次交易中的角色
-    double org_amount;  //原始交易中的交易量
-    double amount;      //对于本机的收支变化
-    double balance;     //此次交易后本机的余额
+    int32 org_amount;  //原始交易中的交易量
+    int32 amount;      //对于本机的收支变化
+    int32 balance;     //此次交易后本机的余额
 };
 
+int32 list_update_time;
 struct LocalInfo local_info;
 struct Log local_log[MAX_LOG];
 
-double atof(const char *str) { //处理写法比较标准的浮点数
+double atof(const char *str) { //处理写法比较标准的浮点数(用不到)
 	double s = 0.0;
 	double d = 10.0;
 	int base = 0;
@@ -145,25 +173,63 @@ double atof(const char *str) { //处理写法比较标准的浮点数
     return (sign?-s:s);
 }
 
-int32 str2msg(char* buf, int32 length, struct Message* msgbuf) {
-    //foo
-    char* ptr;
-    ptr = buf;
-    msgbuf->ipaddr1 = *(int32*)ptr;
-    ptr += 5;
-    msgbuf->ipaddr2 = *(int32*)ptr;
-    ptr += 5;
-    msgbuf->protocol_type = *(byte*)ptr;
-    ptr += 2;
-    msgbuf->amount = atof(ptr);
+status str2msg(char* buf, int32 length, struct Message* msgbuf) {
+    //处理标准形式的消息，即 IP1(dot)_IP2(dot)_protype_amount
+    //只有成功解析才返回OK
+    uint32 retval;
+    char* head, tail, ptr;
+    head = buf;
+    tail = head;
+
+    while(*tail != '_' && *tail != '\0' && tail < buf + length) 
+        tail++;
+    if (*tail != '_') //字符串提前结束或溢出
+        return SYSERR;    
+    *tail = '\0';
+    retval = dot2ip(head, &(msgbuf->ipaddr1));
+    if (retval != OK) //IP解析错误
+        return SYSERR;    
+    head = tail + 1;
+    tail = head;
+
+    while(*tail != '_' && *tail != '\0' && tail < buf + length) 
+        tail++;
+    if (*tail != '_') 
+        return SYSERR;
+    *tail = '\0';
+    retval = dot2ip(head, &(msgbuf->ipaddr2));
+    if (retval != OK)
+        return SYSERR;
+    head = tail + 1;
+    tail = head;
+
+    while(*tail != '_' && *tail != '\0' && tail < buf + length) 
+        tail++;
+    if (*tail != '_') 
+        return SYSERR;
+    *tail = '\0';
+    for (ptr = head; ptr < tail; ptr++)
+        if (*ptr > '9' || *ptr < '0')   //只允许正的数字，进行检查
+            return SYSERR;
+    msgbuf->protocol_type = atoi(head);
+    head = tail + 1;
+    tail = head;
+
+    while(*tail != '_' && *tail != '\0' && tail < buf + length) 
+        tail++;
+    if (!(*tail == '\0' && tail == buf + length)) //恰好到字符串结尾，没有其他额外分隔符 
+        return SYSERR;
+    for (ptr = head; ptr < tail; ptr++)
+        if (*ptr > '9' || *ptr < '0')
+            return SYSERR;
+    msgbuf->amount = atoi(head);
+
     return OK;
 }
 
-int32 msg2log(struct Message* msg, struct Log* logbuf) {  //由接收到的消息填写日志项
-    //foo
+status msg2log(struct Message* msg, struct Log* logbuf) {  //由接收到的消息填写日志项
     if (msg->ipaddr2 == local_info.local_ipaddr) {      //交易收到方已经主动保存了记录
-        // return IGNORE;
-        return -1;
+        return IGNORE;
     }
     logbuf->ipaddr1 = msg->ipaddr1;
     logbuf->ipaddr2 = msg->ipaddr2;
@@ -188,7 +254,7 @@ int32 msg2log(struct Message* msg, struct Log* logbuf) {  //由接收到的消�
     return OK;
 }
 
-int32 arg2log(
+status arg2log(
     struct Log* logbuf, int32 ipaddr1, int32 ipaddr2, byte flag, byte role, double org_amount) {
     //主动通过指定参数填写日志项
     logbuf->ipaddr1 = ipaddr1;
@@ -206,8 +272,8 @@ int32 arg2log(
 
     switch(role) {
         case ROLE_SEND: logbuf->amount = -org_amount; break;
-        case ROLE_RECV: logbuf->amount = org_amount*0.9; break;
-        case ROLE_CONTRACT: logbuf->amount = org_amount*0.1; break;
+        case ROLE_RECV: logbuf->amount = (org_amount/10)*9; break;
+        case ROLE_CONTRACT: logbuf->amount = (org_amount/10); break;
         case ROLE_OTHER: logbuf->amount = 0; break;
         default: return SYSERR;
     }
@@ -222,8 +288,7 @@ int32 arg2log(
  * arp_scan - scan the subnet using ARP (for endGame)
  *------------------------------------------------------------------------
  */
-void arp_scan ()
-{
+void arp_scan () {
     uint32  scanip, stime;
     int32   retval, j, count = 0;
     byte	mac[ETH_ADDR_LEN];
@@ -246,7 +311,8 @@ void arp_scan ()
         count++;   
     }
     local_info.local_alive_count = count;
-	printf("\nFinished. time elapsed: %d s\n", clktime - stime);
+    list_update_time = clktime;
+	printf("\nFinished. time elapsed: %d s\n", list_update_time - stime);
 	return;
 }
 
