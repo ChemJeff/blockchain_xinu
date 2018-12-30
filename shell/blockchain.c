@@ -32,21 +32,24 @@ sid32 send_sem;
 sid32 recv_sem;
 sid32 contract_sem;
 
+//接收和发送报文共用一个slot
+uid32 udp_slot;
+
 extern int32 list_update_time;
 extern struct LocalInfo local_info;
 extern struct Log local_log[];
 
 status init_sem() { //初始化线程相关的信号量
     sid32 retval;
-    retval = semcreate(1);
+    retval = semcreate(0);
     if (retval == SYSERR)
         return SYSERR;
     send_sem = retval;
-    retval = semcreate(1);
+    retval = semcreate(0);
     if (retval == SYSERR)
         return SYSERR;
     recv_sem = retval;
-    retval = semcreate(1);
+    retval = semcreate(0);
     if (retval == SYSERR)
         return SYSERR;
     contract_sem = retval;
@@ -54,35 +57,44 @@ status init_sem() { //初始化线程相关的信号量
 }
 
 process udp_recvp() {
-    int i, count = local_info.local_alive_count;
-    for (i = 0; i < count; i++){
-	udp_register(local_info.local_device_list[i].ipaddr, BLKCHAIN_UDP_PORT, BLKCHAIN_UDP_PORT);//登记arpscan扫描到的每一个主机
-    }
-    udp_register(IP_BCAST, BLKCHAIN_UDP_PORT, BLKCHAIN_UDP_PORT);//登记广播
-    char* message;
-    struct Message *msgbuf;
-    int retval;
-    struct udpentry *udptr;
-    while(1){//循环扫描每一个登记，如果有message到达，就按照类型分发给对应进程
-	    for (i = 0; i < UDP_SLOTS; i++){
-	        udptr = &udptab[i];
-	        if (udptr->udstate != UDP_FREE){
-		        retval = udp_recv(i, message, MAX_MSG_LEN, WAIT_TIME);
-	            if (retval != SYSERR && retval != OK){
-		            str2msg(message, retval, msgbuf);
-		            if (msgbuf->protocol_type == MSG_DEAL_REQ || msgbuf->protocol_type == MSG_DEAL_SUCC || msgbuf->protocol_type == MSG_DEAL_BDCAST){
-			            send(recv_info.procid, message);
-		            }
-		            else{
-			            send(contract_info.procid, message);
-		            }
-		        }
-	        }
-	    }
+    char udp_message[MAX_MSG_LEN];
+    struct Message msgbuf;
+    uint32 retval, remoteip, udp_len;
+    uint16 remoteport;
+    while(TRUE){ //使用udp_recvaddr，接收所有发送至本机1024端口的udp包
+        //然后根据当前本机几个线程的执行情况进行分发处理或者丢弃
+        //首先检查其他线程是不是都退出了(udp线程最后退出)
+        if (main_exited == TRUE && recv_info.exited == TRUE && contract_info.exited == TRUE) {
+            return 0;
+        }
+        udp_len = recvaddr(slot, &remoteip, &remoteport, udp_message, MAX_MSG_LEN - 1, UDP_TIMEOUT);
+        if (udp_len == SYSERR || udp_len == TIMEOUT) {  //本次没有成功接收到udp包，进入下个循环接收
+            continue;
+        }
+        printf("DEBUG: UDP message received from %d.%d.%d.%d : %d",
+            (remoteip >> 24)&0xff, (remoteip >> 16)&0xff, (remoteip >> 8)&0xff, remoteip&0xff,
+            remoteport);
+        retval = str2msg(udp_message, udp_len, &msgbuf); //将收到的字符串转换为协议消息
+        if (retval == SYSERR) { //收到的消息错误，进入下个循环接收
+            continue;
+        }
+        //根据协议消息的具体类型以及对方IP，结合本机工作线程的状态，分发或丢弃该协议消息
+        switch(msgbuf.protocol_type) {
+            case MSG_DEAL_REQ: break;
+            case MSG_CONTRACT_REQ: break;
+            case MSG_CONTRACT_OFFER: break;
+            case MSG_CONTRACT_CONFIRM: break;
+            case MSG_DEAL_SUCC: break;
+            case MSG_DEAL_BDCAST: break;
+            default: continue;
+        }
     }
 }
 
 process sendp() { //实际的使用方式是作为普通函数进行调用，这里分开写为了逻辑上清晰
+    char cmdline[MAX_CMDLINE];
+    struct Message msgbuf;
+    uint32 retval;
     while(TRUE) {
         if (clktime - list_update_time > 300) {
             // 需要重新扫描设备列表
@@ -91,19 +103,41 @@ process sendp() { //实际的使用方式是作为普通函数进行调用，这
         }
         list_device();
         // 读入命令行(可能是一条退出指令，也可能是一条交易指令，或者错误指令(重新输入))
-        while(TRUE) {
+        while(TRUE) { // 直到输入一条正确的指令才继续
+            //指令集{'help', 'exit', 直接发送消息}
 
         }
-
+        //这个工作进程是先主动发送udp包，然后定时等待回应
+        send_flag = TRUE;
+        //
+        send_flag = FALSE;
     }
 }
 
 process recvp() {
-    // foo
+    uint32 retval;
+    while(TRUE) { //每个工作循环从udp线程接收到对应协议消息后唤醒本线程开始
+        wait(recv_sem);
+        recv_flag = TRUE;
+
+
+
+        recv_flag = FALSE;
+    }
+    recv_info.exited = TRUE; //退出之前需要主动设置这个标记
+    return 0;
 }
 
 process contractp() {
-    // foo
+    uint32 retval;
+    while(TRUE) { //每个工作循环从udp线程接收到对应协议消息后唤醒本线程开始
+        wait(contract_sem);
+        contract_flag = TRUE;
+
+        contract_flag = FALSE;
+    }
+    contract_info.excited = TRUE; //退出之前需要主动设置这个标记
+    return 0;
 }
 
 shellcmd xsh_blockchain() {
@@ -143,13 +177,13 @@ shellcmd xsh_blockchain() {
     printf("Initializing data structures...\n");
 
     retval = init_local(&local_info);
-    if (retval == SYSERR) {
+    udp_slot = udp_register(0, BLKCHAIN_UDP_PORT, BLKCHAIN_UDP_PORT);
+    if (retval == SYSERR || udp_slot == SYSERR) {
         printf("    Failed, exit...\n");
         return -1;
     }    
 
     arp_scan();
-    list_update_time = clktime;
 
     printf("Starting worker threads...\n");
 

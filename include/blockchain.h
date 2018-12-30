@@ -9,8 +9,8 @@
 
 #define MAX_ALIVE 255
 #define MAX_LOG 1024
-#define MAX_MSG_LEN 50
-#define WAIT_TIME 10
+#define MAX_MSG_LEN 128
+#define MAX_CMDLINE 128
 
 // test commit
 
@@ -35,6 +35,7 @@
 #define MSG_DEAL_SUCC 5
 #define MSG_DEAL_BDCAST 6
 
+#define UDP_TIMEOUT 50  /* in miliseconds */
 #define RECV_TIMEOUT 1000   /* in milliseconds */
 
 #define IGNORE 0xffff
