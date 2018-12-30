@@ -39,7 +39,32 @@ int32 init_semp() {
 }
 
 process udp_recvp() {
-    // foo
+    int i, count = local_info.local_alive_count;
+    for (i = 0; i < count; i++){
+	udp_register(local_info.local_device_list[i].ipaddr, BLKCHAIN_UDP_PORT, BLKCHAIN_UDP_PORT);//登记arpscan扫描到的每一个主机
+    }
+    udp_register(IP_BCAST, BLKCHAIN_UDP_PORT, BLKCHAIN_UDP_PORT);//登记广播
+    char* message;
+    struct Message *msgbuf;
+    int retval;
+    struct udpentry *udptr;
+    while(1){//循环扫描每一个登记，如果有message到达，就按照类型分发给对应进程
+	    for (i = 0; i < UDP_SLOTS; i++){
+	        udptr = &udptab[i];
+	        if (udptr->udstate != UDP_FREE){
+		        retval = udp_recv(i, message, MAX_MSG_LEN, WAIT_TIME);
+	            if (retval != SYSERR && retval != OK){
+		            str2msg(message, retval, msgbuf);
+		            if (msgbuf->protocol_type == MSG_DEAL_REQ || msgbuf->protocol_type == MSG_DEAL_SUCC || msgbuf->protocol_type == MSG_DEAL_BDCAST){
+			            send(recv_info.procid, message);
+		            }
+		            else{
+			            send(contract_info.procid, message);
+		            }
+		        }
+	        }
+	    }
+    }
 }
 
 process recvp() {
