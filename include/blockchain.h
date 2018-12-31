@@ -9,6 +9,7 @@
 
 #define MAX_ALIVE 255
 #define MAX_LOG 1024
+#define MAX_LOG_BUF 64
 #define MAX_MSG_LEN 1500 // MTU 1500
 #define MAX_STRMSG_LEN 64
 #define MAX_CMDLINE 128
@@ -44,6 +45,27 @@
 #define IGNORE 0xffff
 
 #define EPS 1e-6
+
+#define kprintf(...) \
+{ \
+    wait(global_print_lock); \
+    kprintf(__VA_ARGS__); \
+    signal(global_print_lock); \
+}
+
+#define fprintf(...) \
+{ \
+    wait(global_print_lock); \
+    fprintf(__VA_ARGS__); \
+    signal(global_print_lock); \
+}
+
+#define printf(...) \
+{ \
+    wait(global_print_lock); \
+    printf(__VA_ARGS__); \
+    signal(global_print_lock); \
+}
 
 struct list_t{
     uint32 ipaddr;
@@ -117,9 +139,22 @@ struct Log{
     int32 balance;     //此次交易后本机的余额
 };
 
+struct Log_buf {
+    struct Log log;
+    byte valid;
+};
+
+sid32 global_print_lock;
 int32 list_update_time;
 struct LocalInfo local_info;
 struct Log local_log[MAX_LOG];
+struct Log_buf local_log_buf[MAX_LOG_BUF];
+
+void init_logbuf() {
+    int32 i;
+    for (i = 0; i < MAX_LOG_BUF; i++)
+        local_log_buf[i].valid = FALSE;
+}
 
 void show_balance(did32 dev) { //打印当前余额
     wait(local_info.balance_lock);
@@ -129,11 +164,8 @@ void show_balance(did32 dev) { //打印当前余额
 
 status expend_balance(int32 amount) { //尝试支出一定金额
     wait(local_info.balance_lock);
-    if (local_info.balance < amount) { //余额不足
-        fprintf(dev, "In bc_sendp: insufficient balance %d is less than the amount %d\n",
-            local_info.local_balance, amount);
+    if (local_info.local_balance < amount) //余额不足
         return SYSERR;
-    }
     local_info.local_balance -= amount;  //先扣款，发送失败再返还
     signal(local_info.balance_lock);
     return OK;
@@ -269,7 +301,7 @@ status str2msg(char* buf, int32 length, struct Message* msgbuf) {
 }
 
 status cmd2msg(char* cmdbuf, int32 length, struct Message* msgbuf) {
-    //处理用户交互界面的输入(发送)，即 IP1(dot)_IP2(dot)_amount
+    //处理用户交互界面的输入(发送)，即 IP2(dot)_amount
     //只有成功解析才返回OK
     uint32 retval;
     char *head, *tail, *ptr;
@@ -282,18 +314,30 @@ status cmd2msg(char* cmdbuf, int32 length, struct Message* msgbuf) {
 
     kprintf("DEBUG: in cmd2msg, stage 2\n");
 
+    //kprintf("DEBUG: checkpoint #1\n");
     while(*tail != '_' && *tail != '\0' && tail < cmdbuf + length) 
         tail++;
-    if (*tail != '_') 
+    //kprintf("DEBUG: checkpoint #2\n");
+    if (*tail != '_') {
+        //kprintf("DEBUG: checkpoint #3\n");
         return SYSERR;
+    }
+    //kprintf("DEBUG: checkpoint #4\n");
     *tail = '\0';
+    //kprintf("DEBUG: checkpoint #5\n");
     retval = dot2ip(head, &(msgbuf->ipaddr2));
-    if (retval != OK)
+    //kprintf("DEBUG: checkpoint #6\n");
+    if (retval != OK) {
+        //kprintf("DEBUG: checkpoint #7\n");
         return SYSERR;
+    }
+    //kprintf("DEBUG: checkpoint #8\n");
     head = tail + 1;
+    //kprintf("DEBUG: checkpoint #9\n");
     tail = head;
+    //kprintf("DEBUG: checkpoint #10\n");
 
-    msgbuf->protocal_type = MSG_DEAL_REQ; //从命令行输入的都是发送请求
+    msgbuf->protocol_type = MSG_DEAL_REQ; //从命令行输入的都是发送请求
 
     kprintf("DEBUG: in cmd2msg, stage 3\n");
 
@@ -325,8 +369,7 @@ status msg2str(char* strbuf, int32 buflen, struct Message* msg, int32* strlen) {
         ((msg->ipaddr2)>>8)&0xff,
         (msg->ipaddr2)&0xff,
         msg->protocol_type,
-        msg->amount
-        )
+        msg->amount);
     while(*ptr != '\0' && count < buflen) {
         ptr++;
         count++;
