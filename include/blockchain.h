@@ -93,7 +93,8 @@ struct ProcInfo{ //保存每个处理过程的相关信息
     pid32 procid;
     uint32 ipaddr1;
     uint32 ipaddr2;
-    int32 amount; 
+    uint32 senderip;        //只有需要确认矿机ip地址时才需要
+    int32 amount;          // 当前正在处理的交易量
     int32 last_protocol;  // 上一条收到的信息的协议类型
     byte exited;          // 本线程是否已经退出(udp线程应该最后退出)
 };
@@ -103,6 +104,7 @@ struct Message{
     uint32 ipaddr2;
     int32 protocol_type;
     int32 amount;
+    uint32 senderip;    //只有需要确认矿机ip地址时才需要
 };
 
 struct Log{
@@ -118,6 +120,31 @@ struct Log{
 int32 list_update_time;
 struct LocalInfo local_info;
 struct Log local_log[MAX_LOG];
+
+void show_balance(did32 dev) { //打印当前余额
+    wait(local_info.balance_lock);
+    fprintf(dev, "Local balance: %d\n\n", local_info.local_balance);
+    signal(local_info.balance_lock);
+}
+
+status expend_balance(int32 amount) { //尝试支出一定金额
+    wait(local_info.balance_lock);
+    if (local_info.balance < amount) { //余额不足
+        fprintf(dev, "In bc_sendp: insufficient balance %d is less than the amount %d\n",
+            local_info.local_balance, amount);
+        return SYSERR;
+    }
+    local_info.local_balance -= amount;  //先扣款，发送失败再返还
+    signal(local_info.balance_lock);
+    return OK;
+}
+
+status income_balance(int32 amount) { //收到金额，增加余额
+    wait(local_info.balance_lock);
+    local_info.local_balance += amount;  //先扣款，发送失败再返还
+    signal(local_info.balance_lock);
+    return OK;
+}
 
 double atof(const char *str) { //处理写法比较标准的浮点数(用不到)
 	double s = 0.0;
@@ -251,16 +278,7 @@ status cmd2msg(char* cmdbuf, int32 length, struct Message* msgbuf) {
 
     kprintf("DEBUG: in cmd2msg\n");
 
-    while(*tail != '_' && *tail != '\0' && tail < cmdbuf + length) 
-        tail++;
-    if (*tail != '_') //字符串提前结束或溢出
-        return SYSERR;    
-    *tail = '\0';
-    retval = dot2ip(head, &(msgbuf->ipaddr1));
-    if (retval != OK) //IP解析错误
-        return SYSERR;    
-    head = tail + 1;
-    tail = head;
+    msgbuf->ipaddr1 = NetData.ipucast;  //发送请求的IP1为本机IP
 
     kprintf("DEBUG: in cmd2msg, stage 2\n");
 
@@ -295,6 +313,25 @@ status cmd2msg(char* cmdbuf, int32 length, struct Message* msgbuf) {
 
 status msg2str(char* strbuf, int32 buflen, struct Message* msg, int32* strlen) {
     //将本地的结构体转换为字符串形式，其中strlen所指向的位置用于保存转换完成的字符串长度
+    int32 count = 0;
+    char* ptr = strbuf;
+    sprintf(strbuf, "%d.%d.%d.%d_%d.%d.%d.%d_%d_%d",
+        ((msg->ipaddr1)>>24)&0xff,
+        ((msg->ipaddr1)>>16)&0xff,
+        ((msg->ipaddr1)>>8)&0xff,
+        (msg->ipaddr1)&0xff,
+        ((msg->ipaddr2)>>24)&0xff,
+        ((msg->ipaddr2)>>16)&0xff,
+        ((msg->ipaddr2)>>8)&0xff,
+        (msg->ipaddr2)&0xff,
+        msg->protocol_type,
+        msg->amount
+        )
+    while(*ptr != '\0' && count < buflen) {
+        ptr++;
+        count++;
+    }
+    *strlen = count + 1; //整个字符串长度在此处将'\0'计算在内
     return OK;
 }
 
