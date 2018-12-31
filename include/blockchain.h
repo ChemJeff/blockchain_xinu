@@ -9,7 +9,8 @@
 
 #define MAX_ALIVE 255
 #define MAX_LOG 1024
-#define MAX_MSG_LEN 128
+#define MAX_MSG_LEN 1500 // MTU 1500
+#define MAX_STRMSG_LEN 64
 #define MAX_CMDLINE 128
 
 // test commit
@@ -184,6 +185,8 @@ status str2msg(char* buf, int32 length, struct Message* msgbuf) {
     head = buf;
     tail = head;
 
+    kprintf("DEBUG: in str2msg\n");
+
     while(*tail != '_' && *tail != '\0' && tail < buf + length) 
         tail++;
     if (*tail != '_') //字符串提前结束或溢出
@@ -195,6 +198,8 @@ status str2msg(char* buf, int32 length, struct Message* msgbuf) {
     head = tail + 1;
     tail = head;
 
+    kprintf("DEBUG: in str2msg, stage 2\n");
+
     while(*tail != '_' && *tail != '\0' && tail < buf + length) 
         tail++;
     if (*tail != '_') 
@@ -205,6 +210,8 @@ status str2msg(char* buf, int32 length, struct Message* msgbuf) {
         return SYSERR;
     head = tail + 1;
     tail = head;
+
+    kprintf("DEBUG: in str2msg, stage 3\n");
 
     while(*tail != '_' && *tail != '\0' && tail < buf + length) 
         tail++;
@@ -218,6 +225,8 @@ status str2msg(char* buf, int32 length, struct Message* msgbuf) {
     head = tail + 1;
     tail = head;
 
+    kprintf("DEBUG: in str2msg, stage 4\n");
+
     while(*tail != '_' && *tail != '\0' && tail < buf + length) 
         tail++;
     if (!(*tail == '\0' && tail == buf + length)) //恰好到字符串结尾，没有其他额外分隔符 
@@ -227,6 +236,65 @@ status str2msg(char* buf, int32 length, struct Message* msgbuf) {
             return SYSERR;
     msgbuf->amount = atoi(head);
 
+    kprintf("DEUBG: leave str2msg\n");
+
+    return OK;
+}
+
+status cmd2msg(char* cmdbuf, int32 length, struct Message* msgbuf) {
+    //处理用户交互界面的输入(发送)，即 IP1(dot)_IP2(dot)_amount
+    //只有成功解析才返回OK
+    uint32 retval;
+    char *head, *tail, *ptr;
+    head = cmdbuf;
+    tail = head;
+
+    kprintf("DEBUG: in cmd2msg\n");
+
+    while(*tail != '_' && *tail != '\0' && tail < cmdbuf + length) 
+        tail++;
+    if (*tail != '_') //字符串提前结束或溢出
+        return SYSERR;    
+    *tail = '\0';
+    retval = dot2ip(head, &(msgbuf->ipaddr1));
+    if (retval != OK) //IP解析错误
+        return SYSERR;    
+    head = tail + 1;
+    tail = head;
+
+    kprintf("DEBUG: in cmd2msg, stage 2\n");
+
+    while(*tail != '_' && *tail != '\0' && tail < cmdbuf + length) 
+        tail++;
+    if (*tail != '_') 
+        return SYSERR;
+    *tail = '\0';
+    retval = dot2ip(head, &(msgbuf->ipaddr2));
+    if (retval != OK)
+        return SYSERR;
+    head = tail + 1;
+    tail = head;
+
+    msgbuf->protocal_type = MSG_DEAL_REQ; //从命令行输入的都是发送请求
+
+    kprintf("DEBUG: in cmd2msg, stage 3\n");
+
+    while(*tail != '_' && *tail != '\0' && tail < cmdbuf + length) 
+        tail++;
+    if (!(*tail == '\0' && tail == cmdbuf + length)) //恰好到字符串结尾，没有其他额外分隔符 
+        return SYSERR;
+    for (ptr = head; ptr < tail; ptr++)
+        if (*ptr > '9' || *ptr < '0')
+            return SYSERR;
+    msgbuf->amount = atoi(head);
+
+    kprintf("DEUBG: leave cmd2msg\n");
+
+    return OK;
+}
+
+status msg2str(char* strbuf, int32 buflen, struct Message* msg, int32* strlen) {
+    //将本地的结构体转换为字符串形式，其中strlen所指向的位置用于保存转换完成的字符串长度
     return OK;
 }
 
