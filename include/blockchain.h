@@ -41,6 +41,7 @@
 
 #define UDP_TIMEOUT 50  /* in miliseconds */
 #define RECV_TIMEOUT 1000   /* in milliseconds */
+#define BC_SCAN_INTERVAL 300 /* in seconds */
 
 #define IGNORE 0xffff
 
@@ -244,7 +245,7 @@ status str2msg(char* buf, int32 length, struct Message* msgbuf) {
     head = buf;
     tail = head;
 
-    kprintf("DEBUG: in str2msg\n");
+    // kprintf("DEBUG: in str2msg\n");
 
     while(*tail != '_' && *tail != '\0' && tail < buf + length) 
         tail++;
@@ -257,7 +258,7 @@ status str2msg(char* buf, int32 length, struct Message* msgbuf) {
     head = tail + 1;
     tail = head;
 
-    kprintf("DEBUG: in str2msg, stage 2\n");
+    // kprintf("DEBUG: in str2msg, stage 2\n");
 
     while(*tail != '_' && *tail != '\0' && tail < buf + length) 
         tail++;
@@ -270,7 +271,7 @@ status str2msg(char* buf, int32 length, struct Message* msgbuf) {
     head = tail + 1;
     tail = head;
 
-    kprintf("DEBUG: in str2msg, stage 3\n");
+    // kprintf("DEBUG: in str2msg, stage 3\n");
 
     while(*tail != '_' && *tail != '\0' && tail < buf + length) 
         tail++;
@@ -284,7 +285,7 @@ status str2msg(char* buf, int32 length, struct Message* msgbuf) {
     head = tail + 1;
     tail = head;
 
-    kprintf("DEBUG: in str2msg, stage 4\n");
+    // kprintf("DEBUG: in str2msg, stage 4\n");
 
     while(*tail != '_' && *tail != '\0' && tail < buf + length) 
         tail++;
@@ -295,7 +296,7 @@ status str2msg(char* buf, int32 length, struct Message* msgbuf) {
             return SYSERR;
     msgbuf->amount = atoi(head);
 
-    kprintf("DEUBG: leave str2msg\n");
+    // kprintf("DEUBG: leave str2msg\n");
 
     return OK;
 }
@@ -308,11 +309,11 @@ status cmd2msg(char* cmdbuf, int32 length, struct Message* msgbuf) {
     head = cmdbuf;
     tail = head;
 
-    kprintf("DEBUG: in cmd2msg\n");
+    // kprintf("DEBUG: in cmd2msg\n");
 
     msgbuf->ipaddr1 = NetData.ipucast;  //发送请求的IP1为本机IP
 
-    kprintf("DEBUG: in cmd2msg, stage 2\n");
+    // kprintf("DEBUG: in cmd2msg, stage 2\n");
 
     //kprintf("DEBUG: checkpoint #1\n");
     while(*tail != '_' && *tail != '\0' && tail < cmdbuf + length) 
@@ -339,7 +340,7 @@ status cmd2msg(char* cmdbuf, int32 length, struct Message* msgbuf) {
 
     msgbuf->protocol_type = MSG_DEAL_REQ; //从命令行输入的都是发送请求
 
-    kprintf("DEBUG: in cmd2msg, stage 3\n");
+    // kprintf("DEBUG: in cmd2msg, stage 3\n");
 
     while(*tail != '_' && *tail != '\0' && tail < cmdbuf + length) 
         tail++;
@@ -350,7 +351,7 @@ status cmd2msg(char* cmdbuf, int32 length, struct Message* msgbuf) {
             return SYSERR;
     msgbuf->amount = atoi(head);
 
-    kprintf("DEUBG: leave cmd2msg\n");
+    // kprintf("DEUBG: leave cmd2msg\n");
 
     return OK;
 }

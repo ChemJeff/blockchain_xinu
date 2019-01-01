@@ -86,7 +86,7 @@ process udp_recvp() {
         if (udp_len == SYSERR || udp_len == TIMEOUT) {  //本次没有成功接收到udp包，进入下个循环接收
             continue;
         }
-        kprintf("DEUBG: UDP Checkpoint #3\n");
+        // kprintf("DEUBG: UDP Checkpoint #3\n");
 
         /* IP network prefix in dotted decimal & hex */
 
@@ -114,34 +114,35 @@ process udp_recvp() {
         printf("   %-16s  %-16s  0x%08x\n",
             "Remote IP:", str, remoteip);
 
-        if (remoteip&NetData.ipmask != NetData.ipprefix) { //发出UDP包的地址不在子网内，也可能是字节序的问题，丢弃
+        if ((remoteip&NetData.ipmask) != NetData.ipprefix) { //发出UDP包的地址不在子网内，也可能是字节序的问题，丢弃
             remoteip = ntohl(remoteip);
             remoteport = ntohs(remoteport);
-            kprintf("DEUBG: UDP Checkpoint #3.5\n");
-            if (remoteip&NetData.ipmask != NetData.ipprefix) { //换一个字节序尝试
+            // kprintf("DEUBG: UDP Checkpoint #3.5\n");
+            if ((remoteip&NetData.ipmask) != NetData.ipprefix) { //换一个字节序尝试
                 kprintf("In bc_udprecv: UDP packet filtered\n");
                 continue;
             }
         }
-        kprintf("DEUBG: UDP Checkpoint #4\n");
-        if (remoteip == local_info.local_ipaddr) { //发出UDP包的地址为本机，过滤
-            kprintf("In bc_udprecv: UDP packet from local host\n");
-            continue;
-        }
-        kprintf("DEUBG: UDP Checkpoint #5\n");
+        // kprintf("DEUBG: UDP Checkpoint #4\n");
+        // if (remoteip == local_info.local_ipaddr) { //发出UDP包的地址为本机，过滤
+        //     kprintf("In bc_udprecv: UDP packet from local host\n");
+        //     continue;
+        // }
+        // 如果本机不能同时作为矿机部分代码约束注释掉了，这里对应也要注释掉
+        // kprintf("DEUBG: UDP Checkpoint #5\n");
         kprintf("In bc_udprecv: UDP message received from %d.%d.%d.%d : %d, length = %d\n",
             (remoteip >> 24)&0xff,
             (remoteip >> 16)&0xff,
             (remoteip >> 8)&0xff,
             remoteip&0xff,
             (int32)remoteport, udp_len);
-        kprintf("DEUBG: UDP Checkpoint #6\n");
+        // kprintf("DEUBG: UDP Checkpoint #6\n");
         udp_message[udp_len - 1] = '\0';
-        kprintf("DEUBG: UDP Checkpoint #7\n");
+        // kprintf("DEUBG: UDP Checkpoint #7\n");
         kprintf("\tmessage received: %s\n", udp_message);
-        kprintf("DEUBG: UDP Checkpoint #8\n");
+        // kprintf("DEUBG: UDP Checkpoint #8\n");
         retval = str2msg(udp_message, udp_len - 1, &msgbuf); //将收到的字符串转换为协议消息
-        kprintf("DEUBG: UDP Checkpoint #9\n");
+        // kprintf("DEUBG: UDP Checkpoint #9\n");
         if (retval == SYSERR) { //收到的消息错误，进入下个循环接收
             kprintf("In bc_udprecv: discard incorrect UDP packet\n");
             continue;
@@ -150,21 +151,21 @@ process udp_recvp() {
         //根据协议消息的具体类型以及对方IP，结合本机工作线程的状态，分发或丢弃该协议消息
         switch(msgbuf.protocol_type) {
             case MSG_DEAL_REQ: { //本机是作为交易收到方
-            kprintf("DEUBG: UDP Checkpoint #11\n");
+            // kprintf("DEUBG: UDP Checkpoint #11\n");
                 if (recv_flag == TRUE) { //当前已经有一个recv过程在处理
                     kprintf("In bc_udprecv: discard late MSG_DEAL_REQ\n");
                     continue;
                 }
-                kprintf("DEUBG: UDP Checkpoint #12\n");
+                // kprintf("DEUBG: UDP Checkpoint #12\n");
                 recv_buf = msgbuf;
                 recv_buf.senderip = remoteip; //需要手动设置
-                kprintf("DEUBG: UDP Checkpoint #13\n");
+                // kprintf("DEUBG: UDP Checkpoint #13\n");
                 signal(recv_sem); //通知等待的recv进程有新的请求
-                kprintf("DEUBG: UDP Checkpoint #14\n");
+                // kprintf("DEUBG: UDP Checkpoint #14\n");
                 break;
             }
             case MSG_CONTRACT_REQ: { //本机作为候选矿机
-            kprintf("DEUBG: UDP Checkpoint #15\n");
+            // kprintf("DEUBG: UDP Checkpoint #15\n");
                 if (contract_flag == TRUE) { //当前已经有一个contract过程在处理
                     kprintf("In bc_udprecv: discard late MSG_CONTRACT_REQ\n");
                     continue;
@@ -173,16 +174,16 @@ process udp_recvp() {
                 //     msgbuf.ipaddr2 == local_info.local_ipaddr) { //本机不能作为矿机处理本机相关的交易
                 //     kprintf("In bc_udprecv: ignore MSG_CONTRACT_REQ as sender or receiver\n");
                 // }
-                kprintf("DEUBG: UDP Checkpoint #16\n");
+                // kprintf("DEUBG: UDP Checkpoint #16\n");
                 contract_buf = msgbuf;
                 contract_buf.senderip = remoteip;
-                kprintf("DEUBG: UDP Checkpoint #17\n");
+                // kprintf("DEUBG: UDP Checkpoint #17\n");
                 signal(contract_sem);
-                kprintf("DEUBG: UDP Checkpoint #18\n");
+                // kprintf("DEUBG: UDP Checkpoint #18\n");
                 break;
             }
             case MSG_CONTRACT_OFFER: { //本机作为交易收到方
-            kprintf("DEUBG: UDP Checkpoint #19\n");
+            // kprintf("DEUBG: UDP Checkpoint #19\n");
                 if (recv_flag != TRUE || 
                     recv_info.last_protocol != MSG_CONTRACT_REQ ||
                     recv_info.ipaddr1 != msgbuf.ipaddr1 ||
@@ -191,16 +192,16 @@ process udp_recvp() {
                     kprintf("In bc_udprecv: discard wrong MSG_CONTRACT_OFFER\n");
                     continue;
                 }
-                kprintf("DEUBG: UDP Checkpoint #20\n");
+                // kprintf("DEUBG: UDP Checkpoint #20\n");
                 recv_buf = msgbuf;
                 recv_buf.senderip = remoteip;
-                kprintf("DEUBG: UDP Checkpoint #21\n");
+                // kprintf("DEUBG: UDP Checkpoint #21\n");
                 send(recv_info.procid, OK);
-                kprintf("DEUBG: UDP Checkpoint #22\n");
+                // kprintf("DEUBG: UDP Checkpoint #22\n");
                 break;
             }
             case MSG_CONTRACT_CONFIRM: { //本机作为被选中的矿机
-            kprintf("DEUBG: UDP Checkpoint #23\n");
+            // kprintf("DEUBG: UDP Checkpoint #23\n");
                 if (contract_flag != TRUE ||
                     contract_info.last_protocol != MSG_CONTRACT_OFFER ||
                     contract_info.ipaddr1 != msgbuf.ipaddr1 ||
@@ -209,16 +210,16 @@ process udp_recvp() {
                     kprintf("In bc_udprecv: discard wrong MSG_CONTRACT_CONFIRM\n");
                     continue;
                 }
-                kprintf("DEUBG: UDP Checkpoint #24\n");
+                // kprintf("DEUBG: UDP Checkpoint #24\n");
                 contract_buf = msgbuf;
                 contract_buf.senderip = remoteip;
-                kprintf("DEUBG: UDP Checkpoint #25\n");
+                // kprintf("DEUBG: UDP Checkpoint #25\n");
                 send(contract_info.procid, OK);
-                kprintf("DEUBG: UDP Checkpoint #26\n");
+                // kprintf("DEUBG: UDP Checkpoint #26\n");
                 break;
             }
             case MSG_DEAL_SUCC: { //本机作为交易发起方
-            kprintf("DEUBG: UDP Checkpoint #27\n");
+            // kprintf("DEUBG: UDP Checkpoint #27\n");
                 if (send_flag != TRUE ||
                     send_info.last_protocol != MSG_DEAL_REQ ||
                     send_info.ipaddr1 != msgbuf.ipaddr1 ||
@@ -227,16 +228,16 @@ process udp_recvp() {
                     kprintf("In bc_udprecv: discard wrong MSG_DEAL_SUCC\n");
                     continue;
                 }
-                kprintf("DEUBG: UDP Checkpoint #28\n");
+                // kprintf("DEUBG: UDP Checkpoint #28\n");
                 send_buf = msgbuf;
                 send_buf.senderip = remoteip;
-                kprintf("DEUBG: UDP Checkpoint #29\n");
+                // kprintf("DEUBG: UDP Checkpoint #29\n");
                 send(send_info.procid, OK);
-                kprintf("DEUBG: UDP Checkpoint #30\n");
+                // kprintf("DEUBG: UDP Checkpoint #30\n");
                 break;
             }
             case MSG_DEAL_BDCAST: { //需要结合具体情况区分本机的角色(复杂)
-            kprintf("DEUBG: UDP Checkpoint #31\n");
+            // kprintf("DEUBG: UDP Checkpoint #31\n");
                 if (msgbuf.ipaddr1 == local_info.local_ipaddr ||
                     msgbuf.ipaddr2 == local_info.local_ipaddr) { 
                     //本机是发送方或者接受方，记录日志的工作在工作线程中已经处理
@@ -248,7 +249,7 @@ process udp_recvp() {
                 //如果是吃瓜机器会接受到两次消息
                 //因此在矿机的工作线程中需要自己提前记录一次消息
                 //在log_buf里面的消息需要成对配对了才能被正式记录到log中
-                kprintf("DEUBG: UDP Checkpoint #32\n");
+                // kprintf("DEUBG: UDP Checkpoint #32\n");
                 break;
             }
             default: continue;
@@ -262,7 +263,7 @@ process sendp() { //实际的使用方式是作为普通函数进行调用，这
     struct Message msgbuf;
     byte refresh_flag;
     while(TRUE) {
-        if (clktime - list_update_time > 300) {
+        if (clktime - list_update_time > BC_SCAN_INTERVAL) {
             // 需要重新扫描设备列表
             fprintf(dev, "Refresh the device list...\n");
             arp_scan();
@@ -403,13 +404,14 @@ process recvp() {
             recv_flag = FALSE;
             continue;
         }
-        recv_info.senderip = msgbuf.senderip;
+        //recv_info.senderip = msgbuf.senderip;  //BUG Found!
+        recv_info.senderip = recv_buf.senderip;
         recv_info.last_protocol = recv_buf.protocol_type;
         fprintf(dev, "In bc_recvp: receive MSG_CONTRACT_OFFER\n");
 
         msgbuf.protocol_type = MSG_CONTRACT_CONFIRM;
         msg2str(strbuf, MAX_STRMSG_LEN, &msgbuf, &strlength);
-        retval = udp_sendto(udp_slot, msgbuf.senderip, BLKCHAIN_UDP_PORT, strbuf, strlength);
+        retval = udp_sendto(udp_slot, recv_info.senderip, BLKCHAIN_UDP_PORT, strbuf, strlength);
         if (retval != OK) { //发送失败，直接进入下一个工作循环
             //这里需要加入日志
             recv_flag = FALSE;
@@ -479,7 +481,7 @@ process contractp() {
         contract_info.last_protocol = msgbuf.protocol_type;
         fprintf(dev, "In bc_contractp: send MSG_DEAL_SUCC\n");
         fprintf(dev, "\tmessage sent: %s, length = %d\n", strbuf, strlength);
-        income_balance((recv_info.amount/10)*1);   //通知成功以后才加钱，收取手续费
+        income_balance((contract_info.amount/10)*1);   //通知成功以后才加钱，收取手续费
 
         msgbuf.protocol_type = MSG_DEAL_BDCAST;
         msg2str(strbuf, MAX_STRMSG_LEN, &msgbuf, &strlength);

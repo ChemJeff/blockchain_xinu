@@ -73,21 +73,6 @@ extern	shellcmd  xsh_uptime	(int32, char *[]);
 /* in file xsh_help.c */
 extern	shellcmd  xsh_help	(int32, char *[]);
 
-/* in file xsh_rdstest.c */
-extern	shellcmd  xsh_rdstest	(int32, char *[]);
-
-/* in file xsh_rfstest.c */
-extern	shellcmd  xsh_rfstest	(int32, char *[]);
-
-/* in file xsh_lfstest.c */
-extern	shellcmd  xsh_lfstest	(int32, char *[]);
-
-/* in file xsh_setfile.c */
-extern	shellcmd  xsh_setfile	(int32, char *[]);
-
-/* in file xsh_fromfile.c */
-extern 	shellcmd  xsh_fromfile	(int32, char *[]);
-
 /* in file xsh_arpscan.c */
 extern  shellcmd  xsh_arpscan   (int32, char *[]);
 
