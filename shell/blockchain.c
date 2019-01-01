@@ -63,6 +63,7 @@ status init_sem() { //初始化线程相关以及打印相关的信号量
 process udp_recvp() {
     char udp_message[MAX_MSG_LEN];
     struct Message msgbuf;
+    struct Log logbuf;
     uint32 remoteip;
     int32 udp_len, retval;
     uint16 remoteport;
@@ -90,44 +91,44 @@ process udp_recvp() {
 
         /* IP network prefix in dotted decimal & hex */
 
-        uint32 ipprefix = NetData.ipprefix;
-        char	str[40];		/* Temporary used for formatting*/
-        sprintf(str, "%d.%d.%d.%d",
-            (ipprefix>>24)&0xff, (ipprefix>>16)&0xff,
-            (ipprefix>>8)&0xff,        ipprefix&0xff);
-        printf("   %-16s  %-16s  0x%08x\n",
-            "IP prefix:", str, ipprefix);
+        // uint32 ipprefix = NetData.ipprefix;
+        // char	str[40];		/* Temporary used for formatting*/
+        // sprintf(str, "%d.%d.%d.%d",
+        //     (ipprefix>>24)&0xff, (ipprefix>>16)&0xff,
+        //     (ipprefix>>8)&0xff,        ipprefix&0xff);
+        // printf("   %-16s  %-16s  0x%08x\n",
+        //     "IP prefix:", str, ipprefix);
 
         /* IP network mask in dotted decimal & hex */
 
-        uint32 ipmask = NetData.ipmask;
-        uint32 ipaddr = NetData.ipucast;
-        sprintf(str, "%d.%d.%d.%d",
-            (ipmask>>24)&0xff, (ipmask>>16)&0xff,
-            (ipmask>>8)&0xff,        ipmask&0xff);
-        printf("   %-16s  %-16s  0x%08x\n",
-            "Address mask:", str, ipmask);
+        // uint32 ipmask = NetData.ipmask;
+        // uint32 ipaddr = NetData.ipucast;
+        // sprintf(str, "%d.%d.%d.%d",
+        //     (ipmask>>24)&0xff, (ipmask>>16)&0xff,
+        //     (ipmask>>8)&0xff,        ipmask&0xff);
+        // printf("   %-16s  %-16s  0x%08x\n",
+        //     "Address mask:", str, ipmask);
 
-        sprintf(str, "%d.%d.%d.%d",
-            (remoteip>>24)&0xff, (remoteip>>16)&0xff,
-            (remoteip>>8)&0xff,        remoteip&0xff);
-        printf("   %-16s  %-16s  0x%08x\n",
-            "Remote IP:", str, remoteip);
+        // sprintf(str, "%d.%d.%d.%d",
+        //     (remoteip>>24)&0xff, (remoteip>>16)&0xff,
+        //     (remoteip>>8)&0xff,        remoteip&0xff);
+        // printf("   %-16s  %-16s  0x%08x\n",
+        //     "Remote IP:", str, remoteip);
 
         if ((remoteip&NetData.ipmask) != NetData.ipprefix) { //发出UDP包的地址不在子网内，也可能是字节序的问题，丢弃
             remoteip = ntohl(remoteip);
             remoteport = ntohs(remoteport);
             // kprintf("DEUBG: UDP Checkpoint #3.5\n");
             if ((remoteip&NetData.ipmask) != NetData.ipprefix) { //换一个字节序尝试
-                kprintf("In bc_udprecv: UDP packet filtered\n");
+                kprintf("In bc_udprecv: UDP packet from outer network, filtered\n");
                 continue;
             }
         }
-        // kprintf("DEUBG: UDP Checkpoint #4\n");
-        // if (remoteip == local_info.local_ipaddr) { //发出UDP包的地址为本机，过滤
-        //     kprintf("In bc_udprecv: UDP packet from local host\n");
-        //     continue;
-        // }
+        //kprintf("DEUBG: UDP Checkpoint #4\n");
+        if (remoteip == local_info.local_ipaddr) { //发出UDP包的地址为本机，过滤
+            kprintf("In bc_udprecv: UDP packet from local host, filtered\n");
+            continue;
+        }
         // 如果本机不能同时作为矿机部分代码约束注释掉了，这里对应也要注释掉
         // kprintf("DEUBG: UDP Checkpoint #5\n");
         kprintf("In bc_udprecv: UDP message received from %d.%d.%d.%d : %d, length = %d\n",
@@ -147,7 +148,7 @@ process udp_recvp() {
             kprintf("In bc_udprecv: discard incorrect UDP packet\n");
             continue;
         }
-        kprintf("DEUBG: UDP Checkpoint #10\n");
+        //kprintf("DEUBG: UDP Checkpoint #10\n");
         //根据协议消息的具体类型以及对方IP，结合本机工作线程的状态，分发或丢弃该协议消息
         switch(msgbuf.protocol_type) {
             case MSG_DEAL_REQ: { //本机是作为交易收到方
@@ -160,6 +161,7 @@ process udp_recvp() {
                 recv_buf = msgbuf;
                 recv_buf.senderip = remoteip; //需要手动设置
                 // kprintf("DEUBG: UDP Checkpoint #13\n");
+                kprintf("In bc_udprecv: start a new receiving transaction\n");
                 signal(recv_sem); //通知等待的recv进程有新的请求
                 // kprintf("DEUBG: UDP Checkpoint #14\n");
                 break;
@@ -170,14 +172,16 @@ process udp_recvp() {
                     kprintf("In bc_udprecv: discard late MSG_CONTRACT_REQ\n");
                     continue;
                 }
-                // if (msgbuf.ipaddr1 == local_info.local_ipaddr ||
-                //     msgbuf.ipaddr2 == local_info.local_ipaddr) { //本机不能作为矿机处理本机相关的交易
-                //     kprintf("In bc_udprecv: ignore MSG_CONTRACT_REQ as sender or receiver\n");
-                // }
+                if (msgbuf.ipaddr1 == local_info.local_ipaddr ||
+                    msgbuf.ipaddr2 == local_info.local_ipaddr) { //本机不能作为矿机处理本机相关的交易
+                    kprintf("In bc_udprecv: ignore MSG_CONTRACT_REQ as sender or receiver\n");
+                    continue;
+                }
                 // kprintf("DEUBG: UDP Checkpoint #16\n");
                 contract_buf = msgbuf;
                 contract_buf.senderip = remoteip;
                 // kprintf("DEUBG: UDP Checkpoint #17\n");
+                kprintf("In bc_udprecv: start a new contract transaction\n");
                 signal(contract_sem);
                 // kprintf("DEUBG: UDP Checkpoint #18\n");
                 break;
@@ -244,6 +248,36 @@ process udp_recvp() {
                     kprintf("In bc_udprecv: ignore unnecessary MSG_DEAL_BDCAST\n");
                     continue;
                 }
+                byte found_flag=FALSE, slot_flag=FALSE;
+                int32 ii;
+                msg2log(&msgbuf, &logbuf);
+                for (ii = 0; ii < MAX_LOG_BUF; ii++) {
+                    if (local_log_buf[ii].valid == FALSE)
+                        continue;
+                    if (log_equal(&local_log_buf[ii].log, &logbuf) == TRUE) { //集齐两条消息
+                        local_log_buf[ii].valid = FALSE;
+                        wait(local_info.log_lock);
+                        local_log[local_info.local_log_count++] = local_log_buf[ii].log;
+                        signal(local_info.log_lock);
+                        found_flag = TRUE;
+                        break;
+                    }
+                }
+                if (found_flag == TRUE) {
+                    continue;
+                }
+                //存入一条新的log_buf
+                for (ii =0; ii < MAX_LOG_BUF; ii++) {
+                    if (local_log_buf[ii].valid == TRUE)
+                        continue;
+                    local_log_buf[ii].valid = TRUE;
+                    local_log_buf[ii].log = logbuf;
+                    slot_flag = TRUE;
+                    break;
+                }
+                if (slot_flag == FALSE) {
+                    kprintf("In bc_udprecv: no buffer for new log, may lose some infomation\n");
+                }
                 //这里需要日志记录
                 //注意，如果是矿机那么会接收到一次消息
                 //如果是吃瓜机器会接受到两次消息
@@ -261,6 +295,7 @@ process sendp() { //实际的使用方式是作为普通函数进行调用，这
     char cmdline[MAX_CMDLINE], strbuf[MAX_STRMSG_LEN];
     int32 cmdlen, strlength, retval;
     struct Message msgbuf;
+    struct Log logbuf;
     byte refresh_flag;
     while(TRUE) {
         if (clktime - list_update_time > BC_SCAN_INTERVAL) {
@@ -294,8 +329,12 @@ process sendp() { //实际的使用方式是作为普通函数进行调用，这
                 fprintf(dev, "Usage:\n");
                 fprintf(dev, "\texit: wait all currently executing processes to finish their working cycles, and exit\n");
                 fprintf(dev, "\trefresh: refresh the local balance\n");
+                fprintf(dev, "\tlog: show local logs\n");
                 fprintf(dev, "\thelp: show this message\n");
                 fprintf(dev, "\tor directly input command as 'ip2(dot)_amount'\n");                
+            }
+            else if (strncmp(cmdline, "log", 4) == 0) {
+                list_log();
             }
             else if (strncmp(cmdline, "exit", 5) == 0) {
                 //kprintf("DEBUG: checkpoint #14\n");
@@ -309,8 +348,9 @@ process sendp() { //实际的使用方式是作为普通函数进行调用，这
             }
             else {
                 //kprintf("DEBUG: checkpoint #16\n");
+                fprintf(dev, "In bc_sendp: invalid commandline input\n");
                 fprintf(dev, "Usage:\n");
-                fprintf(dev, "\texit\n\trefresh\n\thelp\n\tor directly input command as 'ip2(dot)_amount'\n");
+                fprintf(dev, "\texit\n\trefresh\n\tlog\n\thelp\n\tor directly input command as 'ip2(dot)_amount'\n");
             }
         }
 
@@ -318,15 +358,17 @@ process sendp() { //实际的使用方式是作为普通函数进行调用，这
             continue;
         
         //这个工作进程是先主动发送udp包，然后定时等待回应
+        fprintf(dev, "In bc_sendp: start a new sending transaction\n");
         retval = expend_balance(msgbuf.amount);
         if (retval != OK) { //余额不足
+            fprintf(dev, "In bc_sendp: Insuficient money, payment failed\n");
             continue;
         }
 
         msg2str(strbuf, MAX_STRMSG_LEN, &msgbuf, &strlength);
         retval = udp_sendto(udp_slot, msgbuf.ipaddr2, BLKCHAIN_UDP_PORT, strbuf, strlength);
         if (retval != OK) { //发送失败，直接进入下一个工作循环
-            //这里需要加入日志
+            arg2log(&logbuf, msgbuf.ipaddr1, msgbuf.ipaddr2, FLAG_FAIL, ROLE_SEND, msgbuf.amount, TRUE);
             income_balance(msgbuf.amount); //钱没有被花出去，补上
             continue;
         }
@@ -339,29 +381,31 @@ process sendp() { //实际的使用方式是作为普通函数进行调用，这
         fprintf(dev, "\tmessage sent: %s, length = %d\n", strbuf, strlength);
 
         retval = recvtime(RECV_TIMEOUT*3); //等待udp线程分发协议消息，超时时间的具体倍数考虑流程图步骤数
-        if (retval != OK) { //超时或其他错误，直接进入下一个工作循环
-            //这里需要加入日志
+        if (retval != OK || send_buf.protocol_type != MSG_DEAL_SUCC) { //超时或其他错误，直接进入下一个工作循环
+            arg2log(&logbuf, send_info.ipaddr1, send_info.ipaddr2, FLAG_FAIL, ROLE_SEND, send_info.amount, TRUE);
             send_flag = FALSE;
             income_balance(send_info.amount); //钱没有被花出去，补上
+            fprintf(dev, "In bc_sendp: timeout for receiving MSG_DEAL_SUCC, payment failed\n");
             continue;
         }
         send_info.last_protocol = send_buf.protocol_type;
         fprintf(dev, "In bc_sendp: receive MSG_DEAL_SUCC\n");
-        //fprintf(dev, "\tmessage received: %s, length = %d\n", );
 
         msgbuf.protocol_type = MSG_DEAL_BDCAST;
         msg2str(strbuf, MAX_STRMSG_LEN, &msgbuf, &strlength);
         retval = udp_sendto(udp_slot, IP_BCAST, BLKCHAIN_UDP_PORT, strbuf, strlength);
+        fprintf(dev, "In bc_sendp: send money success!\n");
+        fprintf(dev, "\tmoney expended: %d\n", send_info.amount);
         if (retval != OK) { //广播通知发送失败，(重试数次)直接进入下一个工作循环
-            //这里需要加入日志
+            fprintf(dev, "In bc_sendp: broadcast MSG_DEAL_BDCAST failed\n");
+            fprintf(dev, "\tlogs on other hosts may be influenced\n");
             send_flag = FALSE;
             continue;
         }
         send_info.last_protocol = msgbuf.protocol_type;
         fprintf(dev, "In bc_sendp: broadcast MSG_DEAL_BDCAST\n");
         fprintf(dev, "\tmessage sent: %s, length = %d\n", strbuf, strlength);
-        fprintf(dev, "In bc_sendp: send money success!\n");
-        //这里需要加入日志
+        arg2log(&logbuf, send_info.ipaddr1, send_info.ipaddr2, FLAG_SUCC, ROLE_SEND, send_info.amount, TRUE);
 
         send_flag = FALSE;
     }
@@ -371,6 +415,7 @@ process recvp() {
     char strbuf[MAX_STRMSG_LEN];
     int32 strlength, retval;
     struct Message msgbuf;
+    struct Log logbuf;
     while(TRUE) { //每个工作循环从udp线程接收到对应协议消息后唤醒本线程开始
         if (main_exited == TRUE) //首先检查主线程是否已经退出
             break;
@@ -390,7 +435,7 @@ process recvp() {
         msg2str(strbuf, MAX_STRMSG_LEN, &msgbuf, &strlength);
         retval = udp_sendto(udp_slot, IP_BCAST, BLKCHAIN_UDP_PORT, strbuf, strlength);
         if (retval != OK) { //广播通知发送失败，(重试数次)直接进入下一个工作循环
-            //这里需要加入日志
+            arg2log(&logbuf, recv_info.ipaddr1, recv_info.ipaddr2, FLAG_FAIL, ROLE_RECV, recv_info.amount, TRUE);
             recv_flag = FALSE;
             continue;
         }
@@ -399,8 +444,8 @@ process recvp() {
         fprintf(dev, "\tmessage sent: %s, length = %d\n", strbuf, strlength);
 
         retval = recvtime(RECV_TIMEOUT); //等待udp线程分发协议消息，超时时间的具体倍数考虑流程图步骤数
-        if (retval != OK) { //超时或其他错误，直接进入下一个工作循环
-            //这里需要加入日志
+        if (retval != OK || recv_info.protocol_type != MSG_CONTRACT_OFFER) { //超时或其他错误，直接进入下一个工作循环
+            arg2log(&logbuf, recv_info.ipaddr1, recv_info.ipaddr2, FLAG_FAIL, ROLE_RECV, recv_info.amount, TRUE);
             recv_flag = FALSE;
             continue;
         }
@@ -413,7 +458,7 @@ process recvp() {
         msg2str(strbuf, MAX_STRMSG_LEN, &msgbuf, &strlength);
         retval = udp_sendto(udp_slot, recv_info.senderip, BLKCHAIN_UDP_PORT, strbuf, strlength);
         if (retval != OK) { //发送失败，直接进入下一个工作循环
-            //这里需要加入日志
+            arg2log(&logbuf, recv_info.ipaddr1, recv_info.ipaddr2, FLAG_FAIL, ROLE_RECV, recv_info.amount, TRUE);
             recv_flag = FALSE;
             continue;
         }
@@ -422,8 +467,8 @@ process recvp() {
         fprintf(dev, "In bc_recvp: send MSG_CONTRACT_CONFIRM\n");
         fprintf(dev, "\tmessage sent: %s, length = %d\n", strbuf, strlength);
         fprintf(dev, "In bc_recvp: receive money success!\n");
-        //这里需要加入日志
-
+        
+        arg2log(&logbuf, recv_info.ipaddr1, recv_info.ipaddr2, FLAG_SUCC, ROLE_RECV, recv_info.amount, TRUE);
         recv_flag = FALSE;
     }
     recv_info.exited = TRUE; //退出之前需要主动设置这个标记
@@ -434,6 +479,7 @@ process contractp() {
     char strbuf[MAX_STRMSG_LEN];
     int32 strlength, retval;
     struct Message msgbuf;
+    struct Log logbuf;
     while(TRUE) { //每个工作循环从udp线程接收到对应协议消息后唤醒本线程开始
         if (main_exited == TRUE) //首先检查主线程是否已经退出
             break;
@@ -453,7 +499,7 @@ process contractp() {
         msg2str(strbuf, MAX_STRMSG_LEN, &msgbuf, &strlength);
         retval = udp_sendto(udp_slot, msgbuf.ipaddr2, BLKCHAIN_UDP_PORT, strbuf, strlength);
         if (retval != OK) { //发送失败，直接进入下一个工作循环
-            //这里需要加入日志
+            arg2log(&logbuf, contract_info.ipaddr1, contract_info.ipaddr2, FLAG_FAIL, ROLE_CONTRACT, contract_info.amount, TRUE);
             contract_flag = FALSE;
             continue;
         }
@@ -462,8 +508,8 @@ process contractp() {
         fprintf(dev, "\tmessage sent: %s, length = %d\n", strbuf, strlength);
 
         retval = recvtime(RECV_TIMEOUT); //等待udp线程分发协议消息，超时时间的具体倍数考虑流程图步骤数
-        if (retval != OK) { //超时或其他错误，直接进入下一个工作循环
-            //这里需要加入日志
+        if (retval != OK || contract_buf.protocol_type != MSG_CONTRACT_CONFIRM) { //超时或其他错误，直接进入下一个工作循环
+            arg2log(&logbuf, contract_info.ipaddr1, contract_info.ipaddr2, FLAG_FAIL, ROLE_CONTRACT, contract_info.amount, TRUE);
             contract_flag = FALSE;
             continue;
         }
@@ -474,7 +520,7 @@ process contractp() {
         msg2str(strbuf, MAX_STRMSG_LEN, &msgbuf, &strlength);
         retval = udp_sendto(udp_slot, msgbuf.ipaddr1, BLKCHAIN_UDP_PORT, strbuf, strlength);
         if (retval != OK) { //发送失败，直接进入下一个工作循环
-            //这里需要加入日志
+            arg2log(&logbuf, contract_info.ipaddr1, contract_info.ipaddr2, FLAG_FAIL, ROLE_CONTRACT, contract_info.amount, TRUE);
             contract_flag = FALSE;
             continue;
         }
@@ -486,8 +532,10 @@ process contractp() {
         msgbuf.protocol_type = MSG_DEAL_BDCAST;
         msg2str(strbuf, MAX_STRMSG_LEN, &msgbuf, &strlength);
         retval = udp_sendto(udp_slot, IP_BCAST, BLKCHAIN_UDP_PORT, strbuf, strlength);
-        if (retval != OK) { //发送失败，直接进入下一个工作循环
-            //这里需要加入日志
+        if (retval != OK) { //广播发送失败，直接进入下一个工作循环
+            fprintf(dev, "In bc_contractp: broadcast MSG_DEAL_BDCAST failed\n");
+            fprintf(dev, "\tlogs on other hosts may be influenced\n");
+            arg2log(&logbuf, contract_info.ipaddr1, contract_info.ipaddr2, FLAG_SUCC, ROLE_CONTRACT, contract_info.amount, TRUE);
             contract_flag = FALSE;
             continue;
         }
@@ -495,6 +543,38 @@ process contractp() {
         fprintf(dev, "In bc_contractp: broadcast MSG_DEAL_BDCAST\n");
         fprintf(dev, "\tmessage sent: %s, length = %d\n", strbuf, strlength);
         fprintf(dev, "In bc_contractp: make contract success!\n");                
+
+        byte found_flag=FALSE, slot_flag=FALSE;
+        int32 ii;
+        arg2log(&logbuf, contract_info.ipaddr1, contract_info.ipaddr2, FLAG_SUCC, ROLE_CONTRACT, contract_info.amount, FALSE);
+        for (ii = 0; ii < MAX_LOG_BUF; ii++) {
+            if (local_log_buf[ii].valid == FALSE)
+                continue;
+            if (log_equal(&local_log_buf[ii].log, &logbuf) == TRUE) { //集齐两条消息
+                local_log_buf[ii].valid = FALSE;
+                wait(local_info.log_lock);
+                local_log[local_info.local_log_count++] = logbuf;
+                signal(local_info.log_lock);
+                found_flag = TRUE;
+                break;
+            }
+        }
+        if (found_flag == TRUE) {
+            contract_flag = FALSE;
+            continue;
+        }
+        //给自己的log_buf添加一条记录
+        for (ii =0; ii < MAX_LOG_BUF; ii++) {
+            if (local_log_buf[ii].valid == TRUE)
+                continue;
+            local_log_buf[ii].valid = TRUE;
+            local_log_buf[ii].log = logbuf;
+            slot_flag = TRUE;
+            break;
+        }
+        if (slot_flag == FALSE) {
+            kprintf("In bc_contractp: no buffer for new log, may lose some infomation\n");
+        }
 
         contract_flag = FALSE;
     }
@@ -510,8 +590,8 @@ shellcmd xsh_blockchain() {
     dev = proctab[getpid()].prdesc[0]; //设置当前的输入输出设备
     global_print_lock = semcreate(1);   //屏幕输出有序化
 
-    fprintf(dev, "Initializing...\n");
-    fprintf(dev, "Creating worker threads...\n");
+    fprintf(dev, "In main: Initializing...\n");
+    fprintf(dev, "In main: Creating worker threads...\n");
 
     send_info.procid = getpid();
     main_exited = FALSE;
@@ -522,42 +602,48 @@ shellcmd xsh_blockchain() {
     udp_procid = create(udp_recvp, BC_PROC_STK, BC_PROC_PRIO, "BCudp", 0);
 
     if (recv_info.procid == SYSERR || contract_info.procid == SYSERR || udp_procid == SYSERR) {
-        fprintf(dev, "    Failed, exit...\n");
+        fprintf(dev, "\tFailed, exit...\n");
         kill(recv_info.procid);
         kill(contract_info.procid);
         kill(udp_procid);
         return -1;
     }
 
-    fprintf(dev, "Creating semaphores...\n");
+    fprintf(dev, "In main: Creating semaphores...\n");
 
     retval = init_sem();
     if (retval == SYSERR) {
-        fprintf(dev, "    Failed, exit...\n");
+        fprintf(dev, "\tFailed, exit...\n");
         return -1;
     }
 
-    fprintf(dev, "Initializing data structures...\n");
+    fprintf(dev, "In main: Initializing data structures...\n");
 
     retval = init_local(&local_info);
     udp_slot = udp_register(0, BLKCHAIN_UDP_PORT, BLKCHAIN_UDP_PORT);
     if (retval == SYSERR || udp_slot == SYSERR) {
-        fprintf(dev, "    Failed, exit...\n");
+        kill(recv_info.procid);
+        kill(contract_info.procid);
+        kill(udp_procid);
+        fprintf(dev, "\tFailed, exit...\n");
         return -1;
     }    
 
+    init_logbuf();
     arp_scan();
 
-    fprintf(dev, "Starting worker threads...\n");
+    fprintf(dev, "In main: Starting worker threads...\n");
 
     resume(recv_info.procid);
     resume(contract_info.procid);
     resume(udp_procid);
 
-    fprintf(dev, "All done! time elapsed: %d s\n", clktime - stime);
+    fprintf(dev, "In main: All done! time elapsed: %d s\n", clktime - stime);
 
     sendp();    //逻辑上是线程，实际上还是主线程中的一个调用
 
+    fprintf(dev, "In main: main thread exited\n");
+    fprintf(dev, "\tother threads will exit once transaction finished\n");
     main_exited = TRUE; //主线程退出之前需要自己设置这个标记，否则其他线程无法在完成本轮工作后依照安全的顺序退出
     return 0;
 }

@@ -68,6 +68,10 @@
     signal(global_print_lock); \
 }
 
+sid32 global_print_lock;    //定义在最前面防止错误
+char* flag_str[] = {"", "SUCC", "FAIL"};
+char* role_str[] = {"", "SEND", "RECV", "CONTRACT", "OTHER"};
+
 struct list_t{
     uint32 ipaddr;
     byte   mac[ETH_ADDR_LEN];
@@ -91,18 +95,23 @@ status init_local(struct LocalInfo* ptrlocal) {
     sid32 retval;
 
     retval = semcreate(1);
-    if (retval == SYSERR)   //分配信号量失败
+    if (retval == SYSERR)  { //分配信号量失败
+        printf("\tFailed to create a semaphore\n");
         return SYSERR;
+    }
     ptrlocal->balance_lock = retval;
-    retval = semcreate(1);
-    if (retval == SYSERR)   //分配信号量失败
+    if (retval == SYSERR)  { //分配信号量失败
+        printf("\tFailed to create a semaphore\n");
         return SYSERR;
+    }
     ptrlocal->list_lock = retval;
     retval = semcreate(1);
-    if (retval == SYSERR)   //分配信号量失败
+    if (retval == SYSERR)  { //分配信号量失败
+        printf("\tFailed to create a semaphore\n");
         return SYSERR;
-
+    }
     ptrlocal->log_lock = retval;
+
     ptrlocal->local_alive_count = 0;
     ptrlocal->local_log_count = 0;
     ptrlocal->local_ipaddr = NetData.ipucast;   //本机IP地址
@@ -145,7 +154,6 @@ struct Log_buf {
     byte valid;
 };
 
-sid32 global_print_lock;
 int32 list_update_time;
 struct LocalInfo local_info;
 struct Log local_log[MAX_LOG];
@@ -157,16 +165,36 @@ void init_logbuf() {
         local_log_buf[i].valid = FALSE;
 }
 
+int32 log_equal(struct Log* log1, struct Log* log2) {
+    if (log1->ipaddr1 != log2->ipaddr1)
+        return FALSE;
+    if (log1->ipaddr2 != log2->ipaddr2)
+        return FALSE;
+    if (log1->flag != log2->flag) //事实上这个字段应该都是SUCC
+        return FALSE;
+    // if (log1->role != log2->role)
+    //     return FALSE;
+    if (log1->org_amount != log2->org_amount)
+        return FALSE;
+    // if (log1->amount != log2->amount)
+    //     return FALSE;
+    // if (log1->balance != log2-> balance)
+    //     return FALSE;
+    return TRUE;
+}
+
 void show_balance(did32 dev) { //打印当前余额
     wait(local_info.balance_lock);
-    fprintf(dev, "Local balance: %d\n\n", local_info.local_balance);
+    fprintf(dev, "\nLocal balance: %d\n\n", local_info.local_balance);
     signal(local_info.balance_lock);
 }
 
 status expend_balance(int32 amount) { //尝试支出一定金额
     wait(local_info.balance_lock);
-    if (local_info.local_balance < amount) //余额不足
+    if (local_info.local_balance < amount) {//余额不足
+        signal(local_info.balance_lock);
         return SYSERR;
+    }
     local_info.local_balance -= amount;  //先扣款，发送失败再返还
     signal(local_info.balance_lock);
     return OK;
@@ -380,26 +408,18 @@ status msg2str(char* strbuf, int32 buflen, struct Message* msg, int32* strlen) {
 }
 
 status msg2log(struct Message* msg, struct Log* logbuf) {  //由接收到的消息填写日志项
-    if (msg->ipaddr2 == local_info.local_ipaddr) {      //交易收到方已经主动保存了记录
+    if (msg->ipaddr2 == local_info.local_ipaddr ||
+        msg->ipaddr2 == local_info.local_ipaddr) {  //只有矿机和其他机器需要处理
         return IGNORE;
     }
     logbuf->ipaddr1 = msg->ipaddr1;
     logbuf->ipaddr2 = msg->ipaddr2;
     logbuf->org_amount = msg->amount;
     logbuf->flag = FLAG_SUCC;
-    if (logbuf->ipaddr1 == local_info.local_ipaddr) {   //本机是发送方
-        logbuf->role = ROLE_SEND;
-    }
-    else {  //矿机(合约机)是不会收到广播通知的，因为广播通知是由矿机发出的
-        logbuf->role = ROLE_OTHER;
-    }
+    logbuf->role = ROLE_OTHER;  //默认字段,下同
+    logbuf->amount = 0;
 
-    switch(logbuf->role) {
-        case ROLE_SEND: logbuf->amount = -logbuf->org_amount; break;
-        case ROLE_OTHER: logbuf->amount = 0; break;
-        default: return SYSERR;
-    }
-    wait(local_info.balance_lock);      //考虑在外层加锁
+    wait(local_info.balance_lock); //这个数字并不重要
     logbuf->balance = local_info.local_balance;
     signal(local_info.balance_lock);
 
@@ -407,31 +427,55 @@ status msg2log(struct Message* msg, struct Log* logbuf) {  //由接收到的消�
 }
 
 status arg2log(
-    struct Log* logbuf, int32 ipaddr1, int32 ipaddr2, byte flag, byte role, double org_amount) {
-    //主动通过指定参数填写日志项
+    struct Log* logbuf, int32 ipaddr1, int32 ipaddr2, byte flag, byte role, double org_amount,
+    byte store) {
+    //主动通过指定参数填写日志项,store为TRUE或者FALSE,是否直接写入log
+    wait(local_info.log_lock);
+    wait(local_info.balance_lock); //在这里的balance比较重要，因此加锁
+
     logbuf->ipaddr1 = ipaddr1;
     logbuf->ipaddr2 = ipaddr2;
     logbuf->flag = flag;
     logbuf->role = role;
     logbuf->org_amount = org_amount;
+    logbuf->balance = local_info.local_balance;
 
     if (flag != FLAG_SUCC) {
         logbuf->amount = 0;
-        wait(local_info.balance_lock);      //考虑在外层加锁
-        logbuf->balance = local_info.local_balance;
         signal(local_info.balance_lock);
+        signal(local_info.log_lock);
+        return OK;
     }
 
     switch(role) {
-        case ROLE_SEND: logbuf->amount = -org_amount; break;
-        case ROLE_RECV: logbuf->amount = (org_amount/10)*9; break;
-        case ROLE_CONTRACT: logbuf->amount = (org_amount/10); break;
-        case ROLE_OTHER: logbuf->amount = 0; break;
-        default: return SYSERR;
+        case ROLE_SEND: {
+            logbuf->amount = -org_amount; 
+            break;
+        }
+        case ROLE_RECV: {
+            logbuf->amount = (org_amount/10)*9; 
+            break;
+        }
+        case ROLE_CONTRACT: {
+            logbuf->amount = (org_amount/10); 
+            break;
+        }
+        // case ROLE_OTHER: { //实际上OTHER机器不应该主动记录
+        //     logbuf->amount = 0; 
+        //     break;
+        // }
+        default: {
+            signal(local_info.balance_lock);
+            signal(local_info.log_lock);
+            return SYSERR;
+        }
     }
-    wait(local_info.balance_lock);      //考虑在外层加锁
-    logbuf->balance = local_info.local_balance;
+
+    if (store == TRUE) {
+        local_log[local_info.local_log_count++] = *logbuf;
+    }
     signal(local_info.balance_lock);
+    signal(local_info.log_lock);
 
     return OK;
 }
@@ -452,6 +496,8 @@ void arp_scan () {
     printf("%3d.", (NetData.ipprefix & 0x00FF0000) >> 16);
     printf("%3d.", (NetData.ipprefix & 0x0000FF00) >> 8);
     printf("%3d\n",  (NetData.ipprefix & 0x000000FF));
+
+    wait(local_info.list_lock);
     for (scanip = NetData.ipprefix + 1; scanip < NetData.ipprefix + 255; scanip++) {
         // assmue the address of the subnet is x.x.x.0
         // and possible ip address of devices are x.x.x.1~x.x.x.254
@@ -463,6 +509,8 @@ void arp_scan () {
         count++;   
     }
     local_info.local_alive_count = count;
+    signal(local_info.list_lock);
+
     list_update_time = clktime;
 	printf("\nFinished. time elapsed: %d s\n", list_update_time - stime);
 	return;
@@ -474,9 +522,11 @@ void arp_scan () {
  */
 void list_device() {
     int32 i, j;
-    printf("Device list:\n");
+    printf("\nDevice list:\n");
     printf("No.     IP Address        Hardware Address   \n");
 	printf("---  ---------------     -----------------   \n");
+
+    wait(local_info.list_lock);
     for (i = 0; i < local_info.local_alive_count; i++) {
         printf("%3d", i);
         printf("  ");
@@ -490,6 +540,50 @@ void list_device() {
 		}
 		printf("\n");   
     }
+    signal(local_info.list_lock);
+
+    printf("\n");
+	return;
+}
+
+/*------------------------------------------------------------------------
+ * list_log - print all logs storaged in the local host (for endGame)
+ *------------------------------------------------------------------------
+ */
+void list_log() {
+    int32 i, j;
+    printf("\nLogs:\n");
+    printf("No.    IP Address 1     IP Address 2   Flag    Role    Amount  Revenue  Balance\n");
+	printf("---  ---------------  ---------------  ----  --------  ------  -------  -------\n");
+
+    wait(local_info.log_lock);
+    for (i = 0; i < local_info.local_log_count; i++) {
+        printf("%3d", i);
+        printf("  ");
+		printf("%3d.", (local_log[i].ipaddr1 & 0xFF000000) >> 24);
+		printf("%3d.", (local_log[i].ipaddr1 & 0x00FF0000) >> 16);
+		printf("%3d.", (local_log[i].ipaddr1 & 0x0000FF00) >> 8);
+		printf("%3d",  (local_log[i].ipaddr1 & 0x000000FF));
+        printf("  ");
+		printf("%3d.", (local_log[i].ipaddr2 & 0xFF000000) >> 24);
+		printf("%3d.", (local_log[i].ipaddr2 & 0x00FF0000) >> 16);
+		printf("%3d.", (local_log[i].ipaddr2 & 0x0000FF00) >> 8);
+		printf("%3d",  (local_log[i].ipaddr2 & 0x000000FF));
+        printf("  ");
+        printf("%4s", flag_str[local_log[i].flag]);
+        printf("  ");
+        printf("%8s", role_str[local_log[i].role]);
+        printf("  ");
+        printf("%6d", local_log[i].org_amount);
+        printf("  ");
+        printf("%7d", local_log[i].amount);
+        printf("  ");
+        printf("%7d", local_log[i].balance);
+
+		printf("\n");   
+    }
+    signal(local_info.log_lock);
+
     printf("\n");
 	return;
 }
