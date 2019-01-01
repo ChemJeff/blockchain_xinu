@@ -444,7 +444,7 @@ process recvp() {
         fprintf(dev, "\tmessage sent: %s, length = %d\n", strbuf, strlength);
 
         retval = recvtime(RECV_TIMEOUT); //等待udp线程分发协议消息，超时时间的具体倍数考虑流程图步骤数
-        if (retval != OK || recv_info.protocol_type != MSG_CONTRACT_OFFER) { //超时或其他错误，直接进入下一个工作循环
+        if (retval != OK || recv_buf.protocol_type != MSG_CONTRACT_OFFER) { //超时或其他错误，直接进入下一个工作循环
             arg2log(&logbuf, recv_info.ipaddr1, recv_info.ipaddr2, FLAG_FAIL, ROLE_RECV, recv_info.amount, TRUE);
             recv_flag = FALSE;
             continue;
