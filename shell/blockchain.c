@@ -300,7 +300,7 @@ process sendp() { //实际的使用方式是作为普通函数进行调用，这
     while(TRUE) {
         if (clktime - list_update_time > BC_SCAN_INTERVAL) {
             // 需要重新扫描设备列表
-            fprintf(dev, "Refresh the device list...\n");
+            fprintf(dev, "\n\nRefresh the device list...\n");
             arp_scan();
         }
         list_device();
@@ -368,8 +368,8 @@ process sendp() { //实际的使用方式是作为普通函数进行调用，这
         msg2str(strbuf, MAX_STRMSG_LEN, &msgbuf, &strlength);
         retval = udp_sendto(udp_slot, msgbuf.ipaddr2, BLKCHAIN_UDP_PORT, strbuf, strlength);
         if (retval != OK) { //发送失败，直接进入下一个工作循环
-            arg2log(&logbuf, msgbuf.ipaddr1, msgbuf.ipaddr2, FLAG_FAIL, ROLE_SEND, msgbuf.amount, TRUE);
             income_balance(msgbuf.amount); //钱没有被花出去，补上
+            arg2log(&logbuf, msgbuf.ipaddr1, msgbuf.ipaddr2, FLAG_FAIL, ROLE_SEND, msgbuf.amount, TRUE);
             continue;
         }
         send_info.ipaddr1 = msgbuf.ipaddr1;    //IP地址1为本机IP
@@ -382,9 +382,9 @@ process sendp() { //实际的使用方式是作为普通函数进行调用，这
 
         retval = recvtime(RECV_TIMEOUT*3); //等待udp线程分发协议消息，超时时间的具体倍数考虑流程图步骤数
         if (retval != OK || send_buf.protocol_type != MSG_DEAL_SUCC) { //超时或其他错误，直接进入下一个工作循环
+            income_balance(send_info.amount); //钱没有被花出去，补上
             arg2log(&logbuf, send_info.ipaddr1, send_info.ipaddr2, FLAG_FAIL, ROLE_SEND, send_info.amount, TRUE);
             send_flag = FALSE;
-            income_balance(send_info.amount); //钱没有被花出去，补上
             fprintf(dev, "In bc_sendp: timeout for receiving MSG_DEAL_SUCC, payment failed\n");
             continue;
         }

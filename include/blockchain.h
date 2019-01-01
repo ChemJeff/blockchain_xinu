@@ -442,6 +442,9 @@ status arg2log(
 
     if (flag != FLAG_SUCC) {
         logbuf->amount = 0;
+        if (store == TRUE) {
+            local_log[local_info.local_log_count++] = *logbuf;
+        }
         signal(local_info.balance_lock);
         signal(local_info.log_lock);
         return OK;
