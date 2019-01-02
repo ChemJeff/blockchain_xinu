@@ -297,11 +297,14 @@ process sendp() { //实际的使用方式是作为普通函数进行调用，这
     struct Message msgbuf;
     struct Log logbuf;
     byte refresh_flag;
+    byte rescan_flag = FALSE;
     while(TRUE) {
-        if (clktime - list_update_time > BC_SCAN_INTERVAL) {
+        if (clktime - list_update_time > BC_SCAN_INTERVAL ||
+            rescan_flag == TRUE) {
             // 需要重新扫描设备列表
             fprintf(dev, "\n\nRefresh the device list...\n");
             arp_scan();
+            rescan_flag = FALSE;
         }
         list_device();
         show_balance(dev);
@@ -329,6 +332,7 @@ process sendp() { //实际的使用方式是作为普通函数进行调用，这
                 fprintf(dev, "Usage:\n");
                 fprintf(dev, "\texit: wait all currently executing processes to finish their working cycles, and exit\n");
                 fprintf(dev, "\trefresh: refresh the local balance\n");
+                fprintf(dev, "\trescan: refresh the local balance and rescan devices\n");
                 fprintf(dev, "\tlog: show local logs\n");
                 fprintf(dev, "\thelp: show this message\n");
                 fprintf(dev, "\tor directly input command as 'ip2(dot)_amount'\n");                
@@ -346,15 +350,19 @@ process sendp() { //实际的使用方式是作为普通函数进行调用，这
                 refresh_flag = TRUE;
                 break;
             }
+            else if (strncmp(cmdline, "rescan", 7) == 0) {
+                rescan_flag = TRUE;
+                break;
+            }
             else {
                 //kprintf("DEBUG: checkpoint #16\n");
                 fprintf(dev, "In bc_sendp: invalid commandline input\n");
                 fprintf(dev, "Usage:\n");
-                fprintf(dev, "\texit\n\trefresh\n\tlog\n\thelp\n\tor directly input command as 'ip2(dot)_amount'\n");
+                fprintf(dev, "\texit\n\trefresh\n\trescan\n\tlog\n\thelp\n\tor directly input command as 'ip2(dot)_amount'\n");
             }
         }
 
-        if (refresh_flag == TRUE)
+        if (refresh_flag == TRUE || rescan_flag)
             continue;
         
         //这个工作进程是先主动发送udp包，然后定时等待回应

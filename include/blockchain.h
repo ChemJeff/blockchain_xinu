@@ -41,7 +41,7 @@
 
 #define UDP_TIMEOUT 50  /* in miliseconds */
 #define RECV_TIMEOUT 1000   /* in milliseconds */
-#define BC_SCAN_INTERVAL 300 /* in seconds */
+#define BC_SCAN_INTERVAL 600 /* in seconds */
 
 #define IGNORE 0xffff
 

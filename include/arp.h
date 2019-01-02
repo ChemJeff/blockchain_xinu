@@ -13,10 +13,10 @@
 
 #define	ARP_SIZ		16		/* Number of entries in a cache	*/
 
-#define	ARP_RETRY	3		/* Num. retries for ARP request	*/
+#define	ARP_RETRY	1		/* Num. retries for ARP request	*/
 
 /* Set the ARP_TIMEOUT smaller for faster scanning (~15s/scan) */
-#define	ARP_TIMEOUT	50		/* Retry timer in milliseconds	*/
+#define	ARP_TIMEOUT	40		/* Retry timer in milliseconds	*/
 
 /* State of an ARP cache entry */
 
